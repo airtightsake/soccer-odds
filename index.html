@@ -1,0 +1,1245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Soccer Odds - Best Lines</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="description" content="Compare best soccer betting odds from US sportsbooks">
+    <meta name="theme-color" content="#0c0c10">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Soccer Odds">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0c0c10;
+            --bg-card: #14141a;
+            --bg-elevated: #1c1c24;
+            --bg-hover: #24242e;
+            --border: #2e2e3a;
+            --border-light: #3a3a48;
+            --text: #f0f0f5;
+            --text-secondary: #9898a8;
+            --text-muted: #68687a;
+            --green: #22c55e;
+            --green-dim: #16a34a;
+            --green-bg: rgba(34, 197, 94, 0.12);
+            --blue: #3b82f6;
+            --orange: #f97316;
+            --purple: #a855f7;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+            min-height: 100vh;
+            line-height: 1.5;
+        }
+
+        .app {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px 24px;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 24px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .brand-icon {
+            width: 44px;
+            height: 44px;
+            background: linear-gradient(135deg, var(--green) 0%, var(--blue) 100%);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            box-shadow: 0 4px 12px rgba(34, 197, 94, 0.25);
+        }
+
+        .brand-name {
+            font-size: 22px;
+            font-weight: 700;
+        }
+
+        .brand-name span {
+            background: linear-gradient(90deg, var(--green), var(--blue));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .api-key-input {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 16px;
+        }
+
+        .api-key-input label {
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        .api-key-input input {
+            background: transparent;
+            border: none;
+            color: var(--text);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 13px;
+            width: 260px;
+            outline: none;
+        }
+
+        .api-key-input input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .controls-row {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            align-items: flex-end;
+        }
+
+        .control-group {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .control-group.small {
+            flex: 0 0 auto;
+            min-width: auto;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+
+        select {
+            width: 100%;
+            padding: 12px 14px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 14px;
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%239898a8' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            background-size: 16px;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        select:hover { border-color: var(--border-light); }
+        select:focus {
+            outline: none;
+            border-color: var(--green);
+            box-shadow: 0 0 0 3px var(--green-bg);
+        }
+        select:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* Settings Panel */
+        .settings-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+
+        .settings-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+            cursor: pointer;
+        }
+
+        .settings-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .settings-toggle {
+            color: var(--text-secondary);
+            font-size: 12px;
+        }
+
+        .settings-content {
+            display: none;
+        }
+
+        .settings-content.open {
+            display: block;
+        }
+
+        .settings-section {
+            margin-bottom: 20px;
+        }
+
+        .settings-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .settings-section-title {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .checkbox-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 8px;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: var(--bg-elevated);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .checkbox-item:hover {
+            background: var(--bg-hover);
+        }
+
+        .checkbox-item input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--green);
+            cursor: pointer;
+        }
+
+        .checkbox-item label {
+            font-size: 13px;
+            color: var(--text);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .lines-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .line-chip {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: var(--bg-elevated);
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.15s;
+            border: 1px solid transparent;
+        }
+
+        .line-chip:hover {
+            background: var(--bg-hover);
+        }
+
+        .line-chip.selected {
+            background: var(--green-bg);
+            border-color: var(--green);
+        }
+
+        .line-chip input[type="checkbox"] {
+            width: 14px;
+            height: 14px;
+            accent-color: var(--green);
+            cursor: pointer;
+        }
+
+        .line-chip label {
+            font-size: 13px;
+            color: var(--text);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+
+        .btn-primary {
+            background: var(--green);
+            color: #000;
+        }
+
+        .btn-primary:hover:not(:disabled) { background: var(--green-dim); }
+        .btn-primary:disabled {
+            background: var(--bg-elevated);
+            color: var(--text-muted);
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: var(--bg-elevated);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-hover);
+        }
+
+        .error-banner {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #ef4444;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .table-wrapper {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .table-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-elevated);
+        }
+
+        .table-title {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .table-info {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .match-count {
+            background: var(--bg-card);
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-weight: 500;
+        }
+
+        .last-update {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--green);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        .table-scroll {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        thead {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        th {
+            background: var(--bg-elevated);
+            padding: 12px 16px;
+            text-align: center;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+
+        th.match-col {
+            text-align: left;
+            min-width: 240px;
+        }
+
+        th.h2h-col { 
+            min-width: 90px;
+            background: rgba(34, 197, 94, 0.05);
+        }
+
+        th.ou-col { 
+            min-width: 80px;
+            background: rgba(59, 130, 246, 0.05);
+        }
+
+        th.ah-col {
+            min-width: 90px;
+            background: rgba(168, 85, 247, 0.05);
+        }
+
+        th.section-header {
+            background: var(--bg-card);
+            color: var(--text-muted);
+            font-size: 10px;
+            padding: 6px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        td {
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border);
+            vertical-align: middle;
+        }
+
+        tr:hover td {
+            background: var(--bg-elevated);
+        }
+
+        .match-cell {
+            text-align: left;
+        }
+
+        .match-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .match-time {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .match-teams {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .team {
+            font-weight: 500;
+            font-size: 13px;
+        }
+
+        .team-home { color: var(--text); }
+        .team-away { color: var(--text-secondary); }
+
+        .vs-text {
+            font-size: 10px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .odds-cell {
+            text-align: center;
+        }
+
+        .odds-display {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+        }
+
+        .odds-value {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--green);
+        }
+
+        .odds-source {
+            font-size: 9px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .odds-na {
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+
+        .handicap-line {
+            font-size: 10px;
+            color: var(--purple);
+            font-weight: 500;
+        }
+
+        .table-footer {
+            padding: 12px 20px;
+            font-size: 11px;
+            color: var(--text-muted);
+            border-top: 1px solid var(--border);
+            background: var(--bg-elevated);
+        }
+
+        .loading-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px;
+            color: var(--text-secondary);
+        }
+
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid var(--border);
+            border-top-color: var(--green);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-bottom: 16px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px;
+            text-align: center;
+            color: var(--text-secondary);
+        }
+
+        .empty-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.6;
+        }
+
+        .empty-state h3 {
+            font-size: 16px;
+            color: var(--text);
+            margin-bottom: 6px;
+        }
+
+        .cost-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        .cost-badge .cost-value {
+            color: var(--orange);
+            font-weight: 600;
+        }
+
+        @media (max-width: 900px) {
+            .app { padding: 16px; }
+            header {
+                flex-direction: column;
+                gap: 16px;
+                align-items: flex-start;
+            }
+            .api-key-input { width: 100%; }
+            .api-key-input input { flex: 1; width: auto; }
+            .checkbox-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <header>
+            <div class="brand">
+                <div class="brand-icon">⚽</div>
+                <div class="brand-name">Best <span>Odds</span></div>
+            </div>
+            <div class="api-key-input">
+                <label>API Key:</label>
+                <input type="password" id="apiKey" placeholder="the-odds-api.com key" />
+            </div>
+        </header>
+
+        <div class="controls-row">
+            <div class="control-group">
+                <label>League</label>
+                <select id="leagueSelect" disabled>
+                    <option value="">Enter API key first...</option>
+                </select>
+            </div>
+            <div class="control-group small">
+                <label>&nbsp;</label>
+                <button class="btn btn-primary" id="fetchBtn" disabled>
+                    <span>📊</span> Load Odds
+                </button>
+            </div>
+            <div class="control-group small">
+                <label>&nbsp;</label>
+                <div class="cost-badge">
+                    API Cost: <span class="cost-value" id="costDisplay">6</span> per call
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-panel">
+            <div class="settings-header" id="settingsToggle">
+                <div class="settings-title">
+                    <span>⚙️</span> Settings
+                </div>
+                <div class="settings-toggle">▼ Click to expand</div>
+            </div>
+            <div class="settings-content" id="settingsContent">
+                <div class="settings-section">
+                    <div class="settings-section-title">Sportsbooks (US Region)</div>
+                    <div class="checkbox-grid" id="bookmakersGrid">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <div class="settings-section-title">Over/Under Lines</div>
+                    <div class="lines-grid" id="ouLinesGrid">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <div class="settings-section-title">Asian Handicap Lines</div>
+                    <div class="lines-grid" id="ahLinesGrid">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="errorBox"></div>
+
+        <div class="table-wrapper" id="tableContainer">
+            <div class="empty-state">
+                <div class="empty-icon">🏟️</div>
+                <h3>Select a League</h3>
+                <p>Enter your API key, select a soccer league, then click Load Odds.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const CORS_PROXY = 'https://corsproxy.io/?';
+        const API_BASE = 'https://api.the-odds-api.com/v4';
+
+        // All available US region bookmakers
+        const ALL_BOOKMAKERS = {
+            'fanduel': { name: 'FanDuel', default: true },
+            'draftkings': { name: 'DraftKings', default: true },
+            'betmgm': { name: 'BetMGM', default: true },
+            'caesars': { name: 'Caesars', default: true },
+            'pointsbet': { name: 'PointsBet', default: false },
+            'bet365': { name: 'Bet365', default: true },
+            'fanatics': { name: 'Fanatics', default: true },
+            'williamhill_us': { name: 'William Hill', default: true },
+            'espnbet': { name: 'ESPN Bet', default: true },
+            'fliff': { name: 'Fliff', default: true },
+            'betonlineag': { name: 'BetOnline', default: true },
+            'bovada': { name: 'Bovada', default: false },
+            'mybookieag': { name: 'MyBookie', default: false },
+            'betus': { name: 'BetUS', default: false },
+            'lowvig': { name: 'LowVig', default: false },
+            'betrivers': { name: 'BetRivers', default: false },
+            'unibet_us': { name: 'Unibet', default: false },
+            'hardrockbet': { name: 'Hard Rock', default: false },
+            'betparx': { name: 'BetParx', default: false },
+            'wynnbet': { name: 'WynnBet', default: false },
+            'superbook': { name: 'SuperBook', default: false },
+            'si_sportsbook': { name: 'SI Sportsbook', default: false }
+        };
+
+        // Available O/U lines
+        const OU_LINES = [
+            { value: 0.5, default: false },
+            { value: 1.5, default: false },
+            { value: 2.5, default: true },
+            { value: 3.5, default: true },
+            { value: 4.5, default: false },
+            { value: 5.5, default: false }
+        ];
+
+        // Available Asian Handicap lines
+        const AH_LINES = [
+            { value: -2.5, default: false },
+            { value: -2, default: false },
+            { value: -1.5, default: false },
+            { value: -1, default: true },
+            { value: -0.5, default: true },
+            { value: 0, default: false },
+            { value: 0.5, default: true },
+            { value: 1, default: true },
+            { value: 1.5, default: false },
+            { value: 2, default: false },
+            { value: 2.5, default: false }
+        ];
+
+        const SOCCER_LEAGUES = [
+            // Top European Leagues
+            { key: 'soccer_epl', name: '🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League (England)' },
+            { key: 'soccer_efl_champ', name: '🏴󠁧󠁢󠁥󠁮󠁧󠁿 Championship (England)' },
+            { key: 'soccer_england_league1', name: '🏴󠁧󠁢󠁥󠁮󠁧󠁿 League One (England)' },
+            { key: 'soccer_england_league2', name: '🏴󠁧󠁢󠁥󠁮󠁧󠁿 League Two (England)' },
+            { key: 'soccer_fa_cup', name: '🏴󠁧󠁢󠁥󠁮󠁧󠁿 FA Cup' },
+            { key: 'soccer_england_efl_cup', name: '🏴󠁧󠁢󠁥󠁮󠁧󠁿 EFL Cup' },
+            { key: 'soccer_spain_la_liga', name: '🇪🇸 La Liga (Spain)' },
+            { key: 'soccer_spain_segunda_division', name: '🇪🇸 La Liga 2 (Spain)' },
+            { key: 'soccer_germany_bundesliga', name: '🇩🇪 Bundesliga (Germany)' },
+            { key: 'soccer_germany_bundesliga2', name: '🇩🇪 Bundesliga 2 (Germany)' },
+            { key: 'soccer_germany_liga3', name: '🇩🇪 3. Liga (Germany)' },
+            { key: 'soccer_italy_serie_a', name: '🇮🇹 Serie A (Italy)' },
+            { key: 'soccer_italy_serie_b', name: '🇮🇹 Serie B (Italy)' },
+            { key: 'soccer_france_ligue_one', name: '🇫🇷 Ligue 1 (France)' },
+            { key: 'soccer_france_ligue_two', name: '🇫🇷 Ligue 2 (France)' },
+            
+            // Other European Leagues
+            { key: 'soccer_netherlands_eredivisie', name: '🇳🇱 Eredivisie (Netherlands)' },
+            { key: 'soccer_belgium_first_div', name: '🇧🇪 First Division (Belgium)' },
+            { key: 'soccer_portugal_primeira_liga', name: '🇵🇹 Primeira Liga (Portugal)' },
+            { key: 'soccer_spl', name: '🏴󠁧󠁢󠁳󠁣󠁴󠁿 Premiership (Scotland)' },
+            { key: 'soccer_turkey_super_league', name: '🇹🇷 Super League (Turkey)' },
+            { key: 'soccer_greece_super_league', name: '🇬🇷 Super League (Greece)' },
+            { key: 'soccer_austria_bundesliga', name: '🇦🇹 Bundesliga (Austria)' },
+            { key: 'soccer_switzerland_superleague', name: '🇨🇭 Super League (Switzerland)' },
+            { key: 'soccer_denmark_superliga', name: '🇩🇰 Superliga (Denmark)' },
+            { key: 'soccer_sweden_allsvenskan', name: '🇸🇪 Allsvenskan (Sweden)' },
+            { key: 'soccer_sweden_superettan', name: '🇸🇪 Superettan (Sweden)' },
+            { key: 'soccer_norway_eliteserien', name: '🇳🇴 Eliteserien (Norway)' },
+            { key: 'soccer_finland_veikkausliiga', name: '🇫🇮 Veikkausliiga (Finland)' },
+            { key: 'soccer_poland_ekstraklasa', name: '🇵🇱 Ekstraklasa (Poland)' },
+            { key: 'soccer_russia_premier_league', name: '🇷🇺 Premier League (Russia)' },
+            { key: 'soccer_league_of_ireland', name: '🇮🇪 League of Ireland' },
+            
+            // UEFA Competitions
+            { key: 'soccer_uefa_champs_league', name: '🏆 UEFA Champions League' },
+            { key: 'soccer_uefa_champs_league_qualification', name: '🏆 UEFA Champions League Qualification' },
+            { key: 'soccer_uefa_europa_league', name: '🏆 UEFA Europa League' },
+            { key: 'soccer_uefa_europa_conference_league', name: '🏆 UEFA Conference League' },
+            { key: 'soccer_uefa_nations_league', name: '🏆 UEFA Nations League' },
+            { key: 'soccer_uefa_european_championship', name: '🏆 UEFA Euro' },
+            { key: 'soccer_uefa_euro_qualification', name: '🏆 UEFA Euro Qualification' },
+            { key: 'soccer_uefa_champs_league_women', name: '🏆 UEFA Women\'s Champions League' },
+            
+            // Americas
+            { key: 'soccer_usa_mls', name: '🇺🇸 MLS (USA)' },
+            { key: 'soccer_mexico_ligamx', name: '🇲🇽 Liga MX (Mexico)' },
+            { key: 'soccer_brazil_campeonato', name: '🇧🇷 Série A (Brazil)' },
+            { key: 'soccer_brazil_serie_b', name: '🇧🇷 Série B (Brazil)' },
+            { key: 'soccer_argentina_primera_division', name: '🇦🇷 Primera División (Argentina)' },
+            { key: 'soccer_chile_campeonato', name: '🇨🇱 Primera División (Chile)' },
+            { key: 'soccer_conmebol_copa_libertadores', name: '🏆 Copa Libertadores' },
+            { key: 'soccer_conmebol_copa_sudamericana', name: '🏆 Copa Sudamericana' },
+            { key: 'soccer_conmebol_copa_america', name: '🏆 Copa América' },
+            { key: 'soccer_concacaf_gold_cup', name: '🏆 CONCACAF Gold Cup' },
+            { key: 'soccer_concacaf_leagues_cup', name: '🏆 Leagues Cup' },
+            
+            // Asia & Oceania
+            { key: 'soccer_australia_aleague', name: '🇦🇺 A-League (Australia)' },
+            { key: 'soccer_japan_j_league', name: '🇯🇵 J-League (Japan)' },
+            { key: 'soccer_korea_kleague1', name: '🇰🇷 K League 1 (Korea)' },
+            { key: 'soccer_china_superleague', name: '🇨🇳 Super League (China)' },
+            
+            // International
+            { key: 'soccer_fifa_world_cup', name: '🌍 FIFA World Cup' },
+            { key: 'soccer_fifa_world_cup_womens', name: '🌍 FIFA Women\'s World Cup' },
+            { key: 'soccer_fifa_world_cup_winner', name: '🌍 FIFA World Cup Winner' },
+            { key: 'soccer_fifa_club_world_cup', name: '🌍 FIFA Club World Cup' },
+            { key: 'soccer_fifa_world_cup_qualifiers_europe', name: '🌍 World Cup Qualifiers - Europe' },
+            { key: 'soccer_fifa_world_cup_qualifiers_south_america', name: '🌍 World Cup Qualifiers - South America' },
+            { key: 'soccer_africa_cup_of_nations', name: '🌍 Africa Cup of Nations' }
+        ];
+
+        // State
+        let apiKey = '';
+        let selectedBookmakers = [];
+        let selectedOULines = [];
+        let selectedAHLines = [];
+
+        // DOM Elements
+        const apiKeyInput = document.getElementById('apiKey');
+        const leagueSelect = document.getElementById('leagueSelect');
+        const fetchBtn = document.getElementById('fetchBtn');
+        const tableContainer = document.getElementById('tableContainer');
+        const errorBox = document.getElementById('errorBox');
+        const settingsToggle = document.getElementById('settingsToggle');
+        const settingsContent = document.getElementById('settingsContent');
+        const bookmakersGrid = document.getElementById('bookmakersGrid');
+        const ouLinesGrid = document.getElementById('ouLinesGrid');
+        const ahLinesGrid = document.getElementById('ahLinesGrid');
+        const costDisplay = document.getElementById('costDisplay');
+
+        // Initialize settings
+        function initSettings() {
+            // Bookmakers
+            bookmakersGrid.innerHTML = '';
+            for (const [key, info] of Object.entries(ALL_BOOKMAKERS)) {
+                const div = document.createElement('div');
+                div.className = 'checkbox-item';
+                div.innerHTML = `
+                    <input type="checkbox" id="book_${key}" value="${key}" ${info.default ? 'checked' : ''}>
+                    <label for="book_${key}">${info.name}</label>
+                `;
+                bookmakersGrid.appendChild(div);
+                
+                if (info.default) selectedBookmakers.push(key);
+            }
+
+            // O/U Lines
+            ouLinesGrid.innerHTML = '';
+            OU_LINES.forEach(line => {
+                const div = document.createElement('div');
+                div.className = `line-chip ${line.default ? 'selected' : ''}`;
+                div.innerHTML = `
+                    <input type="checkbox" id="ou_${line.value}" value="${line.value}" ${line.default ? 'checked' : ''}>
+                    <label for="ou_${line.value}">O/U ${line.value}</label>
+                `;
+                ouLinesGrid.appendChild(div);
+                
+                if (line.default) selectedOULines.push(line.value);
+            });
+
+            // AH Lines
+            ahLinesGrid.innerHTML = '';
+            AH_LINES.forEach(line => {
+                const label = line.value > 0 ? `+${line.value}` : (line.value === 0 ? '0' : line.value);
+                const div = document.createElement('div');
+                div.className = `line-chip ${line.default ? 'selected' : ''}`;
+                div.innerHTML = `
+                    <input type="checkbox" id="ah_${line.value}" value="${line.value}" ${line.default ? 'checked' : ''}>
+                    <label for="ah_${line.value}">${label}</label>
+                `;
+                ahLinesGrid.appendChild(div);
+                
+                if (line.default) selectedAHLines.push(line.value);
+            });
+
+            updateCostDisplay();
+        }
+
+        // Event listeners for settings
+        bookmakersGrid.addEventListener('change', (e) => {
+            if (e.target.type === 'checkbox') {
+                const key = e.target.value;
+                if (e.target.checked) {
+                    if (!selectedBookmakers.includes(key)) selectedBookmakers.push(key);
+                } else {
+                    selectedBookmakers = selectedBookmakers.filter(k => k !== key);
+                }
+            }
+        });
+
+        ouLinesGrid.addEventListener('change', (e) => {
+            if (e.target.type === 'checkbox') {
+                const value = parseFloat(e.target.value);
+                const chip = e.target.closest('.line-chip');
+                if (e.target.checked) {
+                    if (!selectedOULines.includes(value)) selectedOULines.push(value);
+                    chip.classList.add('selected');
+                } else {
+                    selectedOULines = selectedOULines.filter(v => v !== value);
+                    chip.classList.remove('selected');
+                }
+                updateCostDisplay();
+            }
+        });
+
+        ahLinesGrid.addEventListener('change', (e) => {
+            if (e.target.type === 'checkbox') {
+                const value = parseFloat(e.target.value);
+                const chip = e.target.closest('.line-chip');
+                if (e.target.checked) {
+                    if (!selectedAHLines.includes(value)) selectedAHLines.push(value);
+                    chip.classList.add('selected');
+                } else {
+                    selectedAHLines = selectedAHLines.filter(v => v !== value);
+                    chip.classList.remove('selected');
+                }
+                updateCostDisplay();
+            }
+        });
+
+        function updateCostDisplay() {
+            // Cost = markets × regions
+            // Markets: h2h (1) + totals (1 if any OU selected) + spreads (1 if any AH selected)
+            let markets = 1; // h2h always
+            if (selectedOULines.length > 0) markets++;
+            if (selectedAHLines.length > 0) markets++;
+            
+            const regions = 2; // us, us2
+            const cost = markets * regions;
+            costDisplay.textContent = cost;
+        }
+
+        settingsToggle.addEventListener('click', () => {
+            settingsContent.classList.toggle('open');
+            const toggleText = settingsContent.classList.contains('open') ? '▲ Click to collapse' : '▼ Click to expand';
+            settingsToggle.querySelector('.settings-toggle').textContent = toggleText;
+        });
+
+        apiKeyInput.addEventListener('input', () => {
+            apiKey = apiKeyInput.value.trim();
+            if (apiKey.length > 10) {
+                leagueSelect.innerHTML = '<option value="">Select a league...</option>';
+                SOCCER_LEAGUES.forEach(league => {
+                    const opt = document.createElement('option');
+                    opt.value = league.key;
+                    opt.textContent = league.name;
+                    leagueSelect.appendChild(opt);
+                });
+                leagueSelect.disabled = false;
+            } else {
+                leagueSelect.innerHTML = '<option value="">Enter API key first...</option>';
+                leagueSelect.disabled = true;
+                fetchBtn.disabled = true;
+            }
+        });
+
+        leagueSelect.addEventListener('change', () => {
+            fetchBtn.disabled = !leagueSelect.value;
+        });
+
+        fetchBtn.addEventListener('click', fetchOdds);
+
+        function showError(msg) {
+            errorBox.innerHTML = `<div class="error-banner">⚠️ ${msg}</div>`;
+        }
+
+        function clearError() {
+            errorBox.innerHTML = '';
+        }
+
+        function showLoading() {
+            tableContainer.innerHTML = `
+                <div class="loading-state">
+                    <div class="spinner"></div>
+                    <p>Fetching best odds...</p>
+                </div>
+            `;
+        }
+
+        async function fetchOdds() {
+            const sport = leagueSelect.value;
+            if (!sport || !apiKey) return;
+
+            if (selectedBookmakers.length === 0) {
+                showError('Please select at least one sportsbook');
+                return;
+            }
+
+            clearError();
+            showLoading();
+            fetchBtn.disabled = true;
+
+            try {
+                // Build markets list
+                let markets = ['h2h'];
+                if (selectedOULines.length > 0) markets.push('totals');
+                if (selectedAHLines.length > 0) markets.push('spreads');
+
+                const apiUrl = `${API_BASE}/sports/${sport}/odds?apiKey=${apiKey}&regions=us,us2&markets=${markets.join(',')}&oddsFormat=decimal`;
+                const url = CORS_PROXY + encodeURIComponent(apiUrl);
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.message || `API Error: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (!data || data.length === 0) {
+                    tableContainer.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-icon">📭</div>
+                            <h3>No Matches Found</h3>
+                            <p>No upcoming matches with odds available for this league.</p>
+                        </div>
+                    `;
+                } else {
+                    renderTable(data);
+                }
+
+            } catch (error) {
+                console.error('Fetch error:', error);
+                tableContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">❌</div>
+                        <h3>Error Loading Data</h3>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+
+            fetchBtn.disabled = false;
+        }
+
+        function findBestOdds(event, market, outcome, point = null) {
+            let best = { value: null, source: null };
+
+            event.bookmakers?.forEach(bookmaker => {
+                // Only consider selected bookmakers
+                if (!selectedBookmakers.includes(bookmaker.key)) return;
+
+                const marketData = bookmaker.markets?.find(m => m.key === market);
+                if (!marketData) return;
+
+                let outcomeData;
+                if (point !== null) {
+                    outcomeData = marketData.outcomes?.find(o => 
+                        o.name === outcome && o.point === point
+                    );
+                } else {
+                    outcomeData = marketData.outcomes?.find(o => o.name === outcome);
+                }
+
+                if (outcomeData && outcomeData.price) {
+                    if (!best.value || outcomeData.price > best.value) {
+                        best.value = outcomeData.price;
+                        best.source = ALL_BOOKMAKERS[bookmaker.key]?.name || bookmaker.title;
+                    }
+                }
+            });
+
+            return best;
+        }
+
+        function renderTable(events) {
+            const leagueName = leagueSelect.options[leagueSelect.selectedIndex].textContent;
+
+            // Sort lines
+            const sortedOULines = [...selectedOULines].sort((a, b) => a - b);
+            const sortedAHLines = [...selectedAHLines].sort((a, b) => a - b);
+
+            // Build header
+            let headerHtml = `
+                <th class="match-col">Match</th>
+                <th class="h2h-col">Home</th>
+                <th class="h2h-col">Draw</th>
+                <th class="h2h-col">Away</th>
+            `;
+
+            sortedOULines.forEach(line => {
+                headerHtml += `<th class="ou-col">O ${line}</th>`;
+                headerHtml += `<th class="ou-col">U ${line}</th>`;
+            });
+
+            sortedAHLines.forEach(line => {
+                const label = line > 0 ? `+${line}` : (line === 0 ? '0' : line);
+                headerHtml += `<th class="ah-col">H ${label}</th>`;
+                headerHtml += `<th class="ah-col">A ${line > 0 ? -line : (line === 0 ? '0' : '+' + Math.abs(line))}</th>`;
+            });
+
+            let html = `
+                <div class="table-header">
+                    <div class="table-title">${leagueName}</div>
+                    <div class="table-info">
+                        <span class="match-count">${events.length} matches</span>
+                        <span class="last-update">
+                            <span class="pulse-dot"></span>
+                            ${new Date().toLocaleTimeString()}
+                        </span>
+                    </div>
+                </div>
+                <div class="table-scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                ${headerHtml}
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            events.forEach(event => {
+                const date = new Date(event.commence_time);
+                const dateStr = date.toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric'
+                });
+                const timeStr = date.toLocaleTimeString('en-US', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+
+                // H2H odds
+                const homeOdds = findBestOdds(event, 'h2h', event.home_team);
+                const drawOdds = findBestOdds(event, 'h2h', 'Draw');
+                const awayOdds = findBestOdds(event, 'h2h', event.away_team);
+
+                const renderOddsCell = (odds) => {
+                    if (!odds.value) {
+                        return '<span class="odds-na">-</span>';
+                    }
+                    return `
+                        <div class="odds-display">
+                            <span class="odds-value">${odds.value.toFixed(2)}</span>
+                            <span class="odds-source">${odds.source}</span>
+                        </div>
+                    `;
+                };
+
+                let rowHtml = `
+                    <tr>
+                        <td class="match-cell">
+                            <div class="match-info">
+                                <div class="match-time">${dateStr} · ${timeStr}</div>
+                                <div class="match-teams">
+                                    <span class="team team-home">${event.home_team}</span>
+                                    <span class="vs-text">vs</span>
+                                    <span class="team team-away">${event.away_team}</span>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="odds-cell">${renderOddsCell(homeOdds)}</td>
+                        <td class="odds-cell">${renderOddsCell(drawOdds)}</td>
+                        <td class="odds-cell">${renderOddsCell(awayOdds)}</td>
+                `;
+
+                // O/U odds
+                sortedOULines.forEach(line => {
+                    const overOdds = findBestOdds(event, 'totals', 'Over', line);
+                    const underOdds = findBestOdds(event, 'totals', 'Under', line);
+                    rowHtml += `<td class="odds-cell">${renderOddsCell(overOdds)}</td>`;
+                    rowHtml += `<td class="odds-cell">${renderOddsCell(underOdds)}</td>`;
+                });
+
+                // Asian Handicap odds
+                sortedAHLines.forEach(line => {
+                    // Home team gets the handicap, away team gets opposite
+                    const homeAH = findBestOdds(event, 'spreads', event.home_team, line);
+                    const awayAH = findBestOdds(event, 'spreads', event.away_team, -line);
+                    rowHtml += `<td class="odds-cell">${renderOddsCell(homeAH)}</td>`;
+                    rowHtml += `<td class="odds-cell">${renderOddsCell(awayAH)}</td>`;
+                });
+
+                rowHtml += '</tr>';
+                html += rowHtml;
+            });
+
+            // Build footer with selected bookmakers
+            const bookNames = selectedBookmakers
+                .map(k => ALL_BOOKMAKERS[k]?.name || k)
+                .join(', ');
+
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+                <div class="table-footer">
+                    Best odds from: ${bookNames}
+                </div>
+            `;
+
+            tableContainer.innerHTML = html;
+        }
+
+        // Initialize on load
+        initSettings();
+
+        // Register Service Worker for PWA
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js')
+                .then(reg => console.log('Service Worker registered'))
+                .catch(err => console.log('Service Worker not registered', err));
+        }
+    </script>
+</body>
+</html>
