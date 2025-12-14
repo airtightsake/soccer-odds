@@ -972,9 +972,30 @@
             settingsToggle.querySelector('.settings-toggle').textContent = toggleText;
         });
 
+        // Load saved API key on startup
+        function loadSavedApiKey() {
+            const savedKey = localStorage.getItem('soccer_odds_api_key');
+            if (savedKey) {
+                apiKeyInput.value = savedKey;
+                apiKey = savedKey;
+                // Populate league dropdown
+                leagueSelect.innerHTML = '<option value="">Select a league...</option>';
+                SOCCER_LEAGUES.forEach(league => {
+                    const opt = document.createElement('option');
+                    opt.value = league.key;
+                    opt.textContent = league.name;
+                    leagueSelect.appendChild(opt);
+                });
+                leagueSelect.disabled = false;
+            }
+        }
+
         apiKeyInput.addEventListener('input', () => {
             apiKey = apiKeyInput.value.trim();
             if (apiKey.length > 10) {
+                // Save to localStorage
+                localStorage.setItem('soccer_odds_api_key', apiKey);
+                
                 leagueSelect.innerHTML = '<option value="">Select a league...</option>';
                 SOCCER_LEAGUES.forEach(league => {
                     const opt = document.createElement('option');
@@ -1233,6 +1254,7 @@
 
         // Initialize on load
         initSettings();
+        loadSavedApiKey();
 
         // Register Service Worker for PWA
         if ('serviceWorker' in navigator) {
