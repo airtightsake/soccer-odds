@@ -548,6 +548,26 @@
             font-size: 13px;
         }
 
+        .value-indicator {
+            font-size: 12px;
+            margin-left: 2px;
+        }
+
+        .value-indicator.fire {
+            filter: brightness(1.2);
+        }
+
+        .value-indicator.ice {
+            filter: brightness(1.1);
+        }
+
+        .odds-with-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+        }
+
         .handicap-line {
             font-size: 10px;
             color: var(--purple);
@@ -961,7 +981,7 @@
             if (selectedOULines.length > 0) markets++;
             if (selectedAHLines.length > 0) markets++;
             
-            const regions = 2; // us, us2
+            const regions = 3; // us, us2, eu (for Pinnacle)
             const cost = markets * regions;
             costDisplay.textContent = cost;
         }
@@ -1053,7 +1073,7 @@
                 if (selectedOULines.length > 0) markets.push('totals');
                 if (selectedAHLines.length > 0) markets.push('spreads');
 
-                const apiUrl = `${API_BASE}/sports/${sport}/odds?apiKey=${apiKey}&regions=us,us2&markets=${markets.join(',')}&oddsFormat=decimal`;
+                const apiUrl = `${API_BASE}/sports/${sport}/odds?apiKey=${apiKey}&regions=us,us2,eu&markets=${markets.join(',')}&oddsFormat=decimal`;
                 const url = CORS_PROXY + encodeURIComponent(apiUrl);
                 
                 const response = await fetch(url);
@@ -1121,6 +1141,40 @@
             return best;
         }
 
+        // Get Pinnacle odds for comparison (sharp line)
+        function getPinnacleOdds(event, market, outcome, point = null) {
+            const pinnacle = event.bookmakers?.find(b => b.key === 'pinnacle');
+            if (!pinnacle) return null;
+
+            const marketData = pinnacle.markets?.find(m => m.key === market);
+            if (!marketData) return null;
+
+            let outcomeData;
+            if (point !== null) {
+                outcomeData = marketData.outcomes?.find(o => 
+                    o.name === outcome && o.point === point
+                );
+            } else {
+                outcomeData = marketData.outcomes?.find(o => o.name === outcome);
+            }
+
+            return outcomeData?.price || null;
+        }
+
+        // Compare best odds to Pinnacle and return indicator
+        function getValueIndicator(bestOdds, pinnacleOdds) {
+            if (!bestOdds || !pinnacleOdds) return '';
+            
+            const diff = bestOdds - pinnacleOdds;
+            
+            if (diff >= 0.10) {
+                return '<span class="value-indicator fire" title="0.10+ better than Pinnacle">🔥</span>';
+            } else if (diff <= -0.10) {
+                return '<span class="value-indicator ice" title="0.10+ worse than Pinnacle">🧊</span>';
+            }
+            return '';
+        }
+
         function renderTable(events) {
             const leagueName = leagueSelect.options[leagueSelect.selectedIndex].textContent;
 
@@ -1180,18 +1234,26 @@
                     minute: '2-digit'
                 });
 
-                // H2H odds
+                // H2H odds + Pinnacle comparison
                 const homeOdds = findBestOdds(event, 'h2h', event.home_team);
                 const drawOdds = findBestOdds(event, 'h2h', 'Draw');
                 const awayOdds = findBestOdds(event, 'h2h', event.away_team);
+                
+                const homePinnacle = getPinnacleOdds(event, 'h2h', event.home_team);
+                const drawPinnacle = getPinnacleOdds(event, 'h2h', 'Draw');
+                const awayPinnacle = getPinnacleOdds(event, 'h2h', event.away_team);
 
-                const renderOddsCell = (odds) => {
+                const renderOddsCell = (odds, pinnacleOdds = null) => {
                     if (!odds.value) {
                         return '<span class="odds-na">-</span>';
                     }
+                    const indicator = getValueIndicator(odds.value, pinnacleOdds);
                     return `
                         <div class="odds-display">
-                            <span class="odds-value">${odds.value.toFixed(2)}</span>
+                            <div class="odds-with-indicator">
+                                <span class="odds-value">${odds.value.toFixed(2)}</span>
+                                ${indicator}
+                            </div>
                             <span class="odds-source">${odds.source}</span>
                         </div>
                     `;
@@ -1209,17 +1271,19 @@
                                 </div>
                             </div>
                         </td>
-                        <td class="odds-cell">${renderOddsCell(homeOdds)}</td>
-                        <td class="odds-cell">${renderOddsCell(drawOdds)}</td>
-                        <td class="odds-cell">${renderOddsCell(awayOdds)}</td>
+                        <td class="odds-cell">${renderOddsCell(homeOdds, homePinnacle)}</td>
+                        <td class="odds-cell">${renderOddsCell(drawOdds, drawPinnacle)}</td>
+                        <td class="odds-cell">${renderOddsCell(awayOdds, awayPinnacle)}</td>
                 `;
 
                 // O/U odds
                 sortedOULines.forEach(line => {
                     const overOdds = findBestOdds(event, 'totals', 'Over', line);
                     const underOdds = findBestOdds(event, 'totals', 'Under', line);
-                    rowHtml += `<td class="odds-cell">${renderOddsCell(overOdds)}</td>`;
-                    rowHtml += `<td class="odds-cell">${renderOddsCell(underOdds)}</td>`;
+                    const overPinnacle = getPinnacleOdds(event, 'totals', 'Over', line);
+                    const underPinnacle = getPinnacleOdds(event, 'totals', 'Under', line);
+                    rowHtml += `<td class="odds-cell">${renderOddsCell(overOdds, overPinnacle)}</td>`;
+                    rowHtml += `<td class="odds-cell">${renderOddsCell(underOdds, underPinnacle)}</td>`;
                 });
 
                 // Asian Handicap odds
@@ -1227,8 +1291,10 @@
                     // Home team gets the handicap, away team gets opposite
                     const homeAH = findBestOdds(event, 'spreads', event.home_team, line);
                     const awayAH = findBestOdds(event, 'spreads', event.away_team, -line);
-                    rowHtml += `<td class="odds-cell">${renderOddsCell(homeAH)}</td>`;
-                    rowHtml += `<td class="odds-cell">${renderOddsCell(awayAH)}</td>`;
+                    const homeAHPinnacle = getPinnacleOdds(event, 'spreads', event.home_team, line);
+                    const awayAHPinnacle = getPinnacleOdds(event, 'spreads', event.away_team, -line);
+                    rowHtml += `<td class="odds-cell">${renderOddsCell(homeAH, homeAHPinnacle)}</td>`;
+                    rowHtml += `<td class="odds-cell">${renderOddsCell(awayAH, awayAHPinnacle)}</td>`;
                 });
 
                 rowHtml += '</tr>';
@@ -1245,7 +1311,8 @@
                     </table>
                 </div>
                 <div class="table-footer">
-                    Best odds from: ${bookNames}
+                    Best odds from: ${bookNames}<br>
+                    <span style="font-size: 10px;">🔥 = 0.10+ better than Pinnacle | 🧊 = 0.10+ worse than Pinnacle</span>
                 </div>
             `;
 
