@@ -463,6 +463,11 @@
             background: rgba(168, 85, 247, 0.05);
         }
 
+        th.btts-col {
+            min-width: 80px;
+            background: rgba(249, 115, 22, 0.05);
+        }
+
         th.section-header {
             background: var(--bg-card);
             color: var(--text-muted);
@@ -721,6 +726,13 @@
                         <!-- Populated by JS -->
                     </div>
                 </div>
+
+                <div class="settings-section">
+                    <div class="settings-section-title">Both Teams to Score (BTTS)</div>
+                    <div class="lines-grid" id="bttsGrid">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -775,16 +787,16 @@
             { value: 5.5, default: false }
         ];
 
-        // Available Asian Handicap lines
+        // Available Asian Handicap lines - ALL DEFAULT TO FALSE
         const AH_LINES = [
             { value: -2.5, default: false },
             { value: -2, default: false },
             { value: -1.5, default: false },
-            { value: -1, default: true },
-            { value: -0.5, default: true },
+            { value: -1, default: false },
+            { value: -0.5, default: false },
             { value: 0, default: false },
-            { value: 0.5, default: true },
-            { value: 1, default: true },
+            { value: 0.5, default: false },
+            { value: 1, default: false },
             { value: 1.5, default: false },
             { value: 2, default: false },
             { value: 2.5, default: false }
@@ -870,6 +882,7 @@
         let selectedBookmakers = [];
         let selectedOULines = [];
         let selectedAHLines = [];
+        let bttsEnabled = false;
 
         // DOM Elements
         const apiKeyInput = document.getElementById('apiKey');
@@ -882,6 +895,7 @@
         const bookmakersGrid = document.getElementById('bookmakersGrid');
         const ouLinesGrid = document.getElementById('ouLinesGrid');
         const ahLinesGrid = document.getElementById('ahLinesGrid');
+        const bttsGrid = document.getElementById('bttsGrid');
         const costDisplay = document.getElementById('costDisplay');
 
         // Initialize settings
@@ -929,6 +943,14 @@
                 if (line.default) selectedAHLines.push(line.value);
             });
 
+            // BTTS toggle
+            bttsGrid.innerHTML = `
+                <div class="line-chip" id="bttsChip">
+                    <input type="checkbox" id="btts_toggle" value="btts">
+                    <label for="btts_toggle">Enable BTTS</label>
+                </div>
+            `;
+
             updateCostDisplay();
         }
 
@@ -974,12 +996,26 @@
             }
         });
 
+        bttsGrid.addEventListener('change', (e) => {
+            if (e.target.id === 'btts_toggle') {
+                bttsEnabled = e.target.checked;
+                const chip = e.target.closest('.line-chip');
+                if (e.target.checked) {
+                    chip.classList.add('selected');
+                } else {
+                    chip.classList.remove('selected');
+                }
+                updateCostDisplay();
+            }
+        });
+
         function updateCostDisplay() {
             // Cost = markets × regions
-            // Markets: h2h (1) + totals (1 if any OU selected) + spreads (1 if any AH selected)
+            // Markets: h2h (1) + totals (1 if any OU selected) + spreads (1 if any AH selected) + btts (1 if enabled)
             let markets = 1; // h2h always
             if (selectedOULines.length > 0) markets++;
             if (selectedAHLines.length > 0) markets++;
+            if (bttsEnabled) markets++;
             
             const regions = 3; // us, us2, eu (for Pinnacle)
             const cost = markets * regions;
@@ -1072,6 +1108,7 @@
                 let markets = ['h2h'];
                 if (selectedOULines.length > 0) markets.push('totals');
                 if (selectedAHLines.length > 0) markets.push('spreads');
+                if (bttsEnabled) markets.push('btts');
 
                 const apiUrl = `${API_BASE}/sports/${sport}/odds?apiKey=${apiKey}&regions=us,us2,eu&markets=${markets.join(',')}&oddsFormat=decimal`;
                 const url = CORS_PROXY + encodeURIComponent(apiUrl);
@@ -1201,6 +1238,11 @@
                 headerHtml += `<th class="ah-col">A ${line > 0 ? -line : (line === 0 ? '0' : '+' + Math.abs(line))}</th>`;
             });
 
+            if (bttsEnabled) {
+                headerHtml += `<th class="btts-col">BTTS Yes</th>`;
+                headerHtml += `<th class="btts-col">BTTS No</th>`;
+            }
+
             let html = `
                 <div class="table-header">
                     <div class="table-title">${leagueName}</div>
@@ -1296,6 +1338,16 @@
                     rowHtml += `<td class="odds-cell">${renderOddsCell(homeAH, homeAHPinnacle)}</td>`;
                     rowHtml += `<td class="odds-cell">${renderOddsCell(awayAH, awayAHPinnacle)}</td>`;
                 });
+
+                // BTTS odds
+                if (bttsEnabled) {
+                    const bttsYesOdds = findBestOdds(event, 'btts', 'Yes');
+                    const bttsNoOdds = findBestOdds(event, 'btts', 'No');
+                    const bttsYesPinnacle = getPinnacleOdds(event, 'btts', 'Yes');
+                    const bttsNoPinnacle = getPinnacleOdds(event, 'btts', 'No');
+                    rowHtml += `<td class="odds-cell">${renderOddsCell(bttsYesOdds, bttsYesPinnacle)}</td>`;
+                    rowHtml += `<td class="odds-cell">${renderOddsCell(bttsNoOdds, bttsNoPinnacle)}</td>`;
+                }
 
                 rowHtml += '</tr>';
                 html += rowHtml;
