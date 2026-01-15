@@ -32,6 +32,7 @@
             --blue: #3b82f6;
             --orange: #f97316;
             --purple: #a855f7;
+            --yellow: #eab308;
         }
 
         * {
@@ -345,8 +346,28 @@
             border: 1px solid var(--border);
         }
 
-        .btn-secondary:hover {
+        .btn-secondary:hover:not(:disabled) {
             background: var(--bg-hover);
+        }
+
+        .btn-secondary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-btts {
+            background: var(--orange);
+            color: #000;
+        }
+
+        .btn-btts:hover:not(:disabled) {
+            background: #ea580c;
+        }
+
+        .btn-btts:disabled {
+            background: var(--bg-elevated);
+            color: var(--text-muted);
+            cursor: not-allowed;
         }
 
         .error-banner {
@@ -373,6 +394,8 @@
             padding: 16px 20px;
             border-bottom: 1px solid var(--border);
             background: var(--bg-elevated);
+            flex-wrap: wrap;
+            gap: 12px;
         }
 
         .table-title {
@@ -414,6 +437,25 @@
             50% { opacity: 0.4; }
         }
 
+        .btts-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 20px;
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .btts-info {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .btts-info .count {
+            color: var(--orange);
+            font-weight: 600;
+        }
+
         .table-scroll {
             overflow-x: auto;
         }
@@ -443,6 +485,11 @@
             white-space: nowrap;
         }
 
+        th.checkbox-col {
+            width: 50px;
+            min-width: 50px;
+        }
+
         th.match-col {
             text-align: left;
             min-width: 240px;
@@ -465,7 +512,7 @@
 
         th.btts-col {
             min-width: 80px;
-            background: rgba(249, 115, 22, 0.05);
+            background: rgba(249, 115, 22, 0.08);
         }
 
         th.section-header {
@@ -484,6 +531,14 @@
 
         tr:hover td {
             background: var(--bg-elevated);
+        }
+
+        tr.btts-selected td {
+            background: rgba(249, 115, 22, 0.05);
+        }
+
+        tr.btts-selected:hover td {
+            background: rgba(249, 115, 22, 0.1);
         }
 
         .match-cell {
@@ -553,6 +608,12 @@
             font-size: 13px;
         }
 
+        .odds-pending {
+            color: var(--orange);
+            font-size: 11px;
+            font-style: italic;
+        }
+
         .value-indicator {
             font-size: 12px;
             margin-left: 2px;
@@ -577,6 +638,23 @@
             font-size: 10px;
             color: var(--purple);
             font-weight: 500;
+        }
+
+        .btts-checkbox {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--orange);
+            cursor: pointer;
+        }
+
+        .btts-loading {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid var(--border);
+            border-top-color: var(--orange);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
         }
 
         .table-footer {
@@ -661,6 +739,10 @@
             .checkbox-grid {
                 grid-template-columns: repeat(2, 1fr);
             }
+            .btts-controls {
+                flex-direction: column;
+                align-items: flex-start;
+            }
         }
     </style>
 </head>
@@ -723,13 +805,6 @@
                 <div class="settings-section">
                     <div class="settings-section-title">Asian Handicap Lines</div>
                     <div class="lines-grid" id="ahLinesGrid">
-                        <!-- Populated by JS -->
-                    </div>
-                </div>
-
-                <div class="settings-section">
-                    <div class="settings-section-title">Both Teams to Score (BTTS)</div>
-                    <div class="lines-grid" id="bttsGrid">
                         <!-- Populated by JS -->
                     </div>
                 </div>
@@ -882,7 +957,10 @@
         let selectedBookmakers = [];
         let selectedOULines = [];
         let selectedAHLines = [];
-        let bttsEnabled = false;
+        let currentEvents = []; // Store events data for BTTS fetching
+        let currentSport = '';
+        let bttsData = {}; // Store BTTS odds by event ID
+        let selectedBttsEvents = new Set(); // Track which events are selected for BTTS
 
         // DOM Elements
         const apiKeyInput = document.getElementById('apiKey');
@@ -895,7 +973,6 @@
         const bookmakersGrid = document.getElementById('bookmakersGrid');
         const ouLinesGrid = document.getElementById('ouLinesGrid');
         const ahLinesGrid = document.getElementById('ahLinesGrid');
-        const bttsGrid = document.getElementById('bttsGrid');
         const costDisplay = document.getElementById('costDisplay');
 
         // Initialize settings
@@ -943,14 +1020,6 @@
                 if (line.default) selectedAHLines.push(line.value);
             });
 
-            // BTTS toggle
-            bttsGrid.innerHTML = `
-                <div class="line-chip" id="bttsChip">
-                    <input type="checkbox" id="btts_toggle" value="btts">
-                    <label for="btts_toggle">Enable BTTS</label>
-                </div>
-            `;
-
             updateCostDisplay();
         }
 
@@ -996,26 +1065,12 @@
             }
         });
 
-        bttsGrid.addEventListener('change', (e) => {
-            if (e.target.id === 'btts_toggle') {
-                bttsEnabled = e.target.checked;
-                const chip = e.target.closest('.line-chip');
-                if (e.target.checked) {
-                    chip.classList.add('selected');
-                } else {
-                    chip.classList.remove('selected');
-                }
-                updateCostDisplay();
-            }
-        });
-
         function updateCostDisplay() {
             // Cost = markets × regions
-            // Markets: h2h (1) + totals (1 if any OU selected) + spreads (1 if any AH selected) + btts (1 if enabled)
+            // Markets: h2h (1) + totals (1 if any OU selected) + spreads (1 if any AH selected)
             let markets = 1; // h2h always
             if (selectedOULines.length > 0) markets++;
             if (selectedAHLines.length > 0) markets++;
-            if (bttsEnabled) markets++;
             
             const regions = 3; // us, us2, eu (for Pinnacle)
             const cost = markets * regions;
@@ -1103,12 +1158,16 @@
             showLoading();
             fetchBtn.disabled = true;
 
+            // Reset BTTS state
+            bttsData = {};
+            selectedBttsEvents = new Set();
+            currentSport = sport;
+
             try {
                 // Build markets list
                 let markets = ['h2h'];
                 if (selectedOULines.length > 0) markets.push('totals');
                 if (selectedAHLines.length > 0) markets.push('spreads');
-                if (bttsEnabled) markets.push('btts');
 
                 const apiUrl = `${API_BASE}/sports/${sport}/odds?apiKey=${apiKey}&regions=us,us2,eu&markets=${markets.join(',')}&oddsFormat=decimal`;
                 const url = CORS_PROXY + encodeURIComponent(apiUrl);
@@ -1121,6 +1180,7 @@
                 }
 
                 const data = await response.json();
+                currentEvents = data; // Store for BTTS fetching
 
                 if (!data || data.length === 0) {
                     tableContainer.innerHTML = `
@@ -1146,6 +1206,124 @@
             }
 
             fetchBtn.disabled = false;
+        }
+
+        // Fetch BTTS for a single event
+        async function fetchBttsForEvent(eventId) {
+            try {
+                const apiUrl = `${API_BASE}/sports/${currentSport}/events/${eventId}/odds?apiKey=${apiKey}&regions=us,us2,eu&markets=btts&oddsFormat=decimal`;
+                const url = CORS_PROXY + encodeURIComponent(apiUrl);
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    console.error(`BTTS fetch failed for ${eventId}`);
+                    return null;
+                }
+
+                const data = await response.json();
+                return data;
+            } catch (error) {
+                console.error(`BTTS fetch error for ${eventId}:`, error);
+                return null;
+            }
+        }
+
+        // Fetch BTTS for all selected events
+        async function fetchBttsForSelected() {
+            const selectedIds = Array.from(selectedBttsEvents);
+            if (selectedIds.length === 0) return;
+
+            const bttsBtn = document.getElementById('bttsBtn');
+            if (bttsBtn) {
+                bttsBtn.disabled = true;
+                bttsBtn.innerHTML = `<span class="btts-loading"></span> Fetching...`;
+            }
+
+            // Show loading state for selected rows
+            selectedIds.forEach(eventId => {
+                const yesCell = document.getElementById(`btts-yes-${eventId}`);
+                const noCell = document.getElementById(`btts-no-${eventId}`);
+                if (yesCell) yesCell.innerHTML = '<span class="btts-loading"></span>';
+                if (noCell) noCell.innerHTML = '<span class="btts-loading"></span>';
+            });
+
+            // Fetch BTTS for each selected event
+            for (const eventId of selectedIds) {
+                const data = await fetchBttsForEvent(eventId);
+                
+                if (data && data.bookmakers) {
+                    bttsData[eventId] = data.bookmakers;
+                }
+
+                // Update the cells
+                updateBttsCells(eventId);
+                
+                // Small delay to avoid rate limiting
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+
+            if (bttsBtn) {
+                updateBttsButton();
+            }
+        }
+
+        // Update BTTS cells for a specific event
+        function updateBttsCells(eventId) {
+            const yesCell = document.getElementById(`btts-yes-${eventId}`);
+            const noCell = document.getElementById(`btts-no-${eventId}`);
+            
+            if (!yesCell || !noCell) return;
+
+            const bookmakers = bttsData[eventId];
+            
+            if (!bookmakers) {
+                yesCell.innerHTML = '<span class="odds-na">-</span>';
+                noCell.innerHTML = '<span class="odds-na">-</span>';
+                return;
+            }
+
+            const yesOdds = findBestBttsOdds(bookmakers, 'Yes');
+            const noOdds = findBestBttsOdds(bookmakers, 'No');
+            const yesPinnacle = getPinnacleBttsOdds(bookmakers, 'Yes');
+            const noPinnacle = getPinnacleBttsOdds(bookmakers, 'No');
+
+            yesCell.innerHTML = renderOddsCellHtml(yesOdds, yesPinnacle);
+            noCell.innerHTML = renderOddsCellHtml(noOdds, noPinnacle);
+        }
+
+        // Find best BTTS odds from bookmakers
+        function findBestBttsOdds(bookmakers, outcome) {
+            let best = { value: null, source: null };
+
+            bookmakers.forEach(bookmaker => {
+                if (!selectedBookmakers.includes(bookmaker.key)) return;
+
+                const marketData = bookmaker.markets?.find(m => m.key === 'btts');
+                if (!marketData) return;
+
+                const outcomeData = marketData.outcomes?.find(o => o.name === outcome);
+                if (outcomeData && outcomeData.price) {
+                    if (!best.value || outcomeData.price > best.value) {
+                        best.value = outcomeData.price;
+                        best.source = ALL_BOOKMAKERS[bookmaker.key]?.name || bookmaker.title;
+                    }
+                }
+            });
+
+            return best;
+        }
+
+        // Get Pinnacle BTTS odds
+        function getPinnacleBttsOdds(bookmakers, outcome) {
+            const pinnacle = bookmakers.find(b => b.key === 'pinnacle');
+            if (!pinnacle) return null;
+
+            const marketData = pinnacle.markets?.find(m => m.key === 'btts');
+            if (!marketData) return null;
+
+            const outcomeData = marketData.outcomes?.find(o => o.name === outcome);
+            return outcomeData?.price || null;
         }
 
         function findBestOdds(event, market, outcome, point = null) {
@@ -1212,6 +1390,50 @@
             return '';
         }
 
+        // Render odds cell HTML (reusable)
+        function renderOddsCellHtml(odds, pinnacleOdds = null) {
+            if (!odds.value) {
+                return '<span class="odds-na">-</span>';
+            }
+            const indicator = getValueIndicator(odds.value, pinnacleOdds);
+            return `
+                <div class="odds-display">
+                    <div class="odds-with-indicator">
+                        <span class="odds-value">${odds.value.toFixed(2)}</span>
+                        ${indicator}
+                    </div>
+                    <span class="odds-source">${odds.source}</span>
+                </div>
+            `;
+        }
+
+        // Handle BTTS checkbox change
+        function handleBttsCheckbox(eventId, checked) {
+            if (checked) {
+                selectedBttsEvents.add(eventId);
+            } else {
+                selectedBttsEvents.delete(eventId);
+            }
+            
+            // Update row styling
+            const row = document.getElementById(`row-${eventId}`);
+            if (row) {
+                row.classList.toggle('btts-selected', checked);
+            }
+
+            updateBttsButton();
+        }
+
+        // Update BTTS button state
+        function updateBttsButton() {
+            const bttsBtn = document.getElementById('bttsBtn');
+            if (!bttsBtn) return;
+
+            const count = selectedBttsEvents.size;
+            bttsBtn.disabled = count === 0;
+            bttsBtn.innerHTML = `<span>⚽</span> Fetch BTTS for ${count} selected (Cost: ${count})`;
+        }
+
         function renderTable(events) {
             const leagueName = leagueSelect.options[leagueSelect.selectedIndex].textContent;
 
@@ -1221,6 +1443,7 @@
 
             // Build header
             let headerHtml = `
+                <th class="checkbox-col">BTTS</th>
                 <th class="match-col">Match</th>
                 <th class="h2h-col">Home</th>
                 <th class="h2h-col">Draw</th>
@@ -1238,10 +1461,9 @@
                 headerHtml += `<th class="ah-col">A ${line > 0 ? -line : (line === 0 ? '0' : '+' + Math.abs(line))}</th>`;
             });
 
-            if (bttsEnabled) {
-                headerHtml += `<th class="btts-col">BTTS Yes</th>`;
-                headerHtml += `<th class="btts-col">BTTS No</th>`;
-            }
+            // BTTS columns always shown
+            headerHtml += `<th class="btts-col">BTTS Yes</th>`;
+            headerHtml += `<th class="btts-col">BTTS No</th>`;
 
             let html = `
                 <div class="table-header">
@@ -1253,6 +1475,12 @@
                             ${new Date().toLocaleTimeString()}
                         </span>
                     </div>
+                </div>
+                <div class="btts-controls">
+                    <button class="btn btn-btts" id="bttsBtn" disabled>
+                        <span>⚽</span> Fetch BTTS for 0 selected (Cost: 0)
+                    </button>
+                    <span class="btts-info">Select matches with checkboxes, then click to fetch BTTS odds</span>
                 </div>
                 <div class="table-scroll">
                     <table>
@@ -1286,23 +1514,15 @@
                 const awayPinnacle = getPinnacleOdds(event, 'h2h', event.away_team);
 
                 const renderOddsCell = (odds, pinnacleOdds = null) => {
-                    if (!odds.value) {
-                        return '<span class="odds-na">-</span>';
-                    }
-                    const indicator = getValueIndicator(odds.value, pinnacleOdds);
-                    return `
-                        <div class="odds-display">
-                            <div class="odds-with-indicator">
-                                <span class="odds-value">${odds.value.toFixed(2)}</span>
-                                ${indicator}
-                            </div>
-                            <span class="odds-source">${odds.source}</span>
-                        </div>
-                    `;
+                    return renderOddsCellHtml(odds, pinnacleOdds);
                 };
 
                 let rowHtml = `
-                    <tr>
+                    <tr id="row-${event.id}">
+                        <td class="odds-cell">
+                            <input type="checkbox" class="btts-checkbox" data-event-id="${event.id}" 
+                                   onchange="handleBttsCheckbox('${event.id}', this.checked)">
+                        </td>
                         <td class="match-cell">
                             <div class="match-info">
                                 <div class="match-time">${dateStr} · ${timeStr}</div>
@@ -1339,14 +1559,18 @@
                     rowHtml += `<td class="odds-cell">${renderOddsCell(awayAH, awayAHPinnacle)}</td>`;
                 });
 
-                // BTTS odds
-                if (bttsEnabled) {
-                    const bttsYesOdds = findBestOdds(event, 'btts', 'Yes');
-                    const bttsNoOdds = findBestOdds(event, 'btts', 'No');
-                    const bttsYesPinnacle = getPinnacleOdds(event, 'btts', 'Yes');
-                    const bttsNoPinnacle = getPinnacleOdds(event, 'btts', 'No');
-                    rowHtml += `<td class="odds-cell">${renderOddsCell(bttsYesOdds, bttsYesPinnacle)}</td>`;
-                    rowHtml += `<td class="odds-cell">${renderOddsCell(bttsNoOdds, bttsNoPinnacle)}</td>`;
+                // BTTS cells (empty initially, or show data if already fetched)
+                const hasBtts = bttsData[event.id];
+                if (hasBtts) {
+                    const yesOdds = findBestBttsOdds(bttsData[event.id], 'Yes');
+                    const noOdds = findBestBttsOdds(bttsData[event.id], 'No');
+                    const yesPinnacle = getPinnacleBttsOdds(bttsData[event.id], 'Yes');
+                    const noPinnacle = getPinnacleBttsOdds(bttsData[event.id], 'No');
+                    rowHtml += `<td class="odds-cell" id="btts-yes-${event.id}">${renderOddsCellHtml(yesOdds, yesPinnacle)}</td>`;
+                    rowHtml += `<td class="odds-cell" id="btts-no-${event.id}">${renderOddsCellHtml(noOdds, noPinnacle)}</td>`;
+                } else {
+                    rowHtml += `<td class="odds-cell" id="btts-yes-${event.id}"><span class="odds-pending">Select ☑</span></td>`;
+                    rowHtml += `<td class="odds-cell" id="btts-no-${event.id}"><span class="odds-pending">Select ☑</span></td>`;
                 }
 
                 rowHtml += '</tr>';
@@ -1364,11 +1588,17 @@
                 </div>
                 <div class="table-footer">
                     Best odds from: ${bookNames}<br>
-                    <span style="font-size: 10px;">🔥 = 0.10+ better than Pinnacle | 🧊 = 0.10+ worse than Pinnacle</span>
+                    <span style="font-size: 10px;">🔥 = 0.10+ better than Pinnacle | 🧊 = 0.10+ worse than Pinnacle | BTTS fetched separately per match (1 API call each)</span>
                 </div>
             `;
 
             tableContainer.innerHTML = html;
+
+            // Add event listener for BTTS button
+            const bttsBtn = document.getElementById('bttsBtn');
+            if (bttsBtn) {
+                bttsBtn.addEventListener('click', fetchBttsForSelected);
+            }
         }
 
         // Initialize on load
