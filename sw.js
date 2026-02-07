@@ -1,4 +1,4 @@
-const CACHE_NAME = 'soccer-odds-v2';
+const CACHE_NAME = 'soccer-odds-v3';
 const urlsToCache = [
   './',
   './index.html',
@@ -14,20 +14,40 @@ self.addEventListener('install', event => {
         return cache.addAll(urlsToCache);
       })
   );
+  self.skipWaiting();
 });
 
-// Fetch event - serve from cache, fallback to network
+// Fetch event - only cache local assets, let API calls go straight to network
 self.addEventListener('fetch', event => {
+  const url = new URL(event.request.url);
+
+  // Skip API and external requests entirely — don't intercept them
+  if (
+    url.hostname.includes('api.allorigins.win') ||
+    url.hostname.includes('api.the-odds-api.com') ||
+    url.hostname.includes('cors') ||
+    event.request.method !== 'GET'
+  ) {
+    return; // Let the browser handle it normally
+  }
+
+  // For local/app-shell assets: cache-first with network fallback + error handling
   event.respondWith(
     caches.match(event.request)
       .then(response => {
-        // Return cached version or fetch from network
-        return response || fetch(event.request);
+        return response || fetch(event.request).then(networkResponse => {
+          return networkResponse;
+        });
+      })
+      .catch(error => {
+        console.log('SW fetch failed:', error);
+        // Return a basic offline fallback if needed
+        return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
       })
   );
 });
 
-// Activate event - clean up old caches
+// Activate event - clean up old caches and take control immediately
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(cacheNames => {
@@ -38,6 +58,6 @@ self.addEventListener('activate', event => {
           }
         })
       );
-    })
+    }).then(() => self.clients.claim())
   );
 });
