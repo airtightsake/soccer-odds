@@ -1,4 +1,4 @@
-const CACHE_NAME = 'soccer-odds-v3';
+const CACHE_NAME = 'soccer-odds-v4';
 const urlsToCache = [
   './',
   './index.html',
@@ -17,7 +17,8 @@ self.addEventListener('install', event => {
   self.skipWaiting();
 });
 
-// Fetch event - only cache local assets, let API calls go straight to network
+// Fetch event - network-first for the page, cache-first for static assets,
+// let API calls go straight to network
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
@@ -31,17 +32,29 @@ self.addEventListener('fetch', event => {
     return; // Let the browser handle it normally
   }
 
-  // For local/app-shell assets: cache-first with network fallback + error handling
+  // Network-first for the page itself so deployed updates show up
+  // immediately; fall back to cache only when offline
+  if (event.request.mode === 'navigate' || url.pathname.endsWith('/index.html')) {
+    event.respondWith(
+      fetch(event.request)
+        .then(networkResponse => {
+          const copy = networkResponse.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+          return networkResponse;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // For static assets (icons, fonts): cache-first with network fallback
   event.respondWith(
     caches.match(event.request)
       .then(response => {
-        return response || fetch(event.request).then(networkResponse => {
-          return networkResponse;
-        });
+        return response || fetch(event.request);
       })
       .catch(error => {
         console.log('SW fetch failed:', error);
-        // Return a basic offline fallback if needed
         return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
       })
   );
