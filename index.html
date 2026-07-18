@@ -669,6 +669,51 @@
             background: var(--bg-elevated);
         }
 
+        .coverage {
+            margin-top: 10px;
+        }
+
+        .coverage summary {
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-size: 11px;
+            font-weight: 600;
+            user-select: none;
+        }
+
+        .coverage-table {
+            width: auto;
+            margin-top: 8px;
+            font-size: 11px;
+            border-collapse: collapse;
+        }
+
+        .coverage-table th {
+            padding: 4px 12px 4px 0;
+            text-align: left;
+            font-size: 10px;
+            background: transparent;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .coverage-table td {
+            padding: 4px 12px 4px 0;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-secondary);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 11px;
+            text-align: left;
+        }
+
+        .coverage-table td:first-child {
+            font-family: 'DM Sans', sans-serif;
+            color: var(--text);
+        }
+
+        .coverage-none {
+            color: var(--orange);
+        }
+
         .loading-state {
             display: flex;
             flex-direction: column;
@@ -1534,6 +1579,73 @@
             bttsBtn.innerHTML = `<span>⚽</span> Fetch BTTS for ${count} selected (Cost: ${count * regionUnits()})`;
         }
 
+        // Per-book diagnostic: which markets and O/U points each requested
+        // book actually returned in this load. Distinguishes "the API has no
+        // data for this book" from "the book never wins the best-price cell".
+        function buildCoverageHtml(events) {
+            const n = events.length;
+            const rows = [...selectedBookmakers, BENCHMARK_BOOK].map(key => {
+                const name = key === BENCHMARK_BOOK
+                    ? 'Pinnacle (benchmark)'
+                    : (ALL_BOOKMAKERS[key]?.name || key);
+
+                let present = 0, h2h = 0;
+                const totalsPoints = {};
+                const spreadPoints = {};
+
+                events.forEach(ev => {
+                    const bm = ev.bookmakers?.find(b => b.key === key);
+                    if (!bm) return;
+                    present++;
+                    bm.markets?.forEach(m => {
+                        if (m.key === 'h2h') h2h++;
+                        else if (m.key === 'totals') {
+                            m.outcomes?.forEach(o => {
+                                if (o.name === 'Over' && o.point !== undefined) {
+                                    totalsPoints[o.point] = (totalsPoints[o.point] || 0) + 1;
+                                }
+                            });
+                        } else if (m.key === 'spreads') {
+                            m.outcomes?.forEach(o => {
+                                if (o.point !== undefined) {
+                                    const p = Math.abs(o.point);
+                                    spreadPoints[p] = (spreadPoints[p] || 0) + 1;
+                                }
+                            });
+                        }
+                    });
+                });
+
+                const fmtPoints = obj => Object.keys(obj)
+                    .sort((a, b) => a - b)
+                    .map(p => `${p}×${obj[p]}`)
+                    .join(', ');
+
+                if (present === 0) {
+                    return `<tr><td>${name}</td><td class="coverage-none" colspan="4">no data returned (not offered by API for this league, or book requires a paid plan)</td></tr>`;
+                }
+                return `<tr>
+                    <td>${name}</td>
+                    <td>${present}/${n}</td>
+                    <td>${h2h}</td>
+                    <td>${fmtPoints(totalsPoints) || '—'}</td>
+                    <td>${fmtPoints(spreadPoints) || '—'}</td>
+                </tr>`;
+            }).join('');
+
+            return `
+                <details class="coverage">
+                    <summary>🔎 Book coverage for this load (which markets each book returned)</summary>
+                    <table class="coverage-table">
+                        <thead>
+                            <tr><th>Book</th><th>Matches</th><th>h2h</th><th>O/U points returned (×matches)</th><th>AH points (×sides)</th></tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </details>
+            `;
+        }
+
         function renderTable(events) {
             const leagueName = leagueSelect.options[leagueSelect.selectedIndex].textContent;
 
@@ -1680,6 +1792,7 @@
                 <div class="table-footer">
                     Best odds from: ${bookNames}<br>
                     <span style="font-size: 10px;">Green % = beats Pinnacle's no-vig fair price (+EV) | gray % = slightly below fair | red % = 5%+ below fair | hover a badge to see the fair price | BTTS costs ${regionUnits()} credit${regionUnits() > 1 ? 's' : ''} per match</span>
+                    ${buildCoverageHtml(events)}
                 </div>
             `;
 
