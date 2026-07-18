@@ -1,4 +1,4 @@
-const CACHE_NAME = 'soccer-odds-v4';
+const CACHE_NAME = 'soccer-odds-v5';
 const urlsToCache = [
   './',
   './index.html',

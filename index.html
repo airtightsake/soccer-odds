@@ -614,24 +614,28 @@
             font-style: italic;
         }
 
-        .value-indicator {
-            font-size: 12px;
-            margin-left: 2px;
+        .edge-badge {
+            font-size: 10px;
+            font-weight: 600;
+            font-family: 'IBM Plex Mono', monospace;
+            border-radius: 4px;
+            padding: 0 5px;
+            margin-top: 1px;
+            display: inline-block;
         }
 
-        .value-indicator.fire {
-            filter: brightness(1.2);
+        .edge-pos {
+            color: var(--green);
+            background: var(--green-bg);
         }
 
-        .value-indicator.ice {
-            filter: brightness(1.1);
+        .edge-mid {
+            color: var(--text-muted);
         }
 
-        .odds-with-indicator {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 2px;
+        .edge-neg {
+            color: #ef4444;
+            background: rgba(239, 68, 68, 0.12);
         }
 
         .handicap-line {
@@ -782,7 +786,13 @@
             <div class="control-group small">
                 <label>&nbsp;</label>
                 <div class="cost-badge">
-                    API Cost: <span class="cost-value" id="costDisplay">6</span> per call
+                    API Cost: <span class="cost-value" id="costDisplay">2</span> per call
+                </div>
+            </div>
+            <div class="control-group small" id="lastCostGroup" style="display: none;">
+                <label>&nbsp;</label>
+                <div class="cost-badge">
+                    Last call: <span class="cost-value" id="lastCostDisplay">—</span> credits
                 </div>
             </div>
             <div class="control-group small" id="creditsBadgeGroup" style="display: none;">
@@ -802,7 +812,7 @@
             </div>
             <div class="settings-content" id="settingsContent">
                 <div class="settings-section">
-                    <div class="settings-section-title">Sportsbooks (US Region)</div>
+                    <div class="settings-section-title">Sportsbooks (10 total incl. Pinnacle = cheapest API calls)</div>
                     <div class="checkbox-grid" id="bookmakersGrid">
                         <!-- Populated by JS -->
                     </div>
@@ -838,31 +848,39 @@
     <script>
         const API_BASE = 'https://api.the-odds-api.com/v4';
 
-        // All available US region bookmakers
+        // Bookmakers, keyed by The Odds API key. Defaults = books Sean actually
+        // bets at. williamhill_us IS Caesars; espnbet IS theScore Bet (Penn
+        // rebrand); bet365 only exists as bet365_au (paid plans).
+        // Pinnacle is requested separately as the fair-price benchmark.
         const ALL_BOOKMAKERS = {
             'fanduel': { name: 'FanDuel', default: true },
             'draftkings': { name: 'DraftKings', default: true },
             'betmgm': { name: 'BetMGM', default: true },
-            'caesars': { name: 'Caesars', default: true },
-            'pointsbet': { name: 'PointsBet', default: false },
-            'bet365': { name: 'Bet365', default: true },
+            'williamhill_us': { name: 'Caesars', default: true },
             'fanatics': { name: 'Fanatics', default: true },
-            'williamhill_us': { name: 'William Hill', default: true },
-            'espnbet': { name: 'ESPN Bet', default: true },
-            'fliff': { name: 'Fliff', default: true },
             'betonlineag': { name: 'BetOnline', default: true },
+            'espnbet': { name: 'theScore Bet', default: true },
+            'bet365_au': { name: 'Bet365 (AU)', default: true },
+            'fliff': { name: 'Fliff', default: false },
+            'hardrockbet': { name: 'Hard Rock', default: false },
+            'betrivers': { name: 'BetRivers', default: false },
+            'ballybet': { name: 'Bally Bet', default: false },
+            'betparx': { name: 'BetParx', default: false },
+            'betanysports': { name: 'BetAnySports', default: false },
             'bovada': { name: 'Bovada', default: false },
             'mybookieag': { name: 'MyBookie', default: false },
             'betus': { name: 'BetUS', default: false },
             'lowvig': { name: 'LowVig', default: false },
-            'betrivers': { name: 'BetRivers', default: false },
-            'unibet_us': { name: 'Unibet', default: false },
-            'hardrockbet': { name: 'Hard Rock', default: false },
-            'betparx': { name: 'BetParx', default: false },
-            'wynnbet': { name: 'WynnBet', default: false },
-            'superbook': { name: 'SuperBook', default: false },
-            'si_sportsbook': { name: 'SI Sportsbook', default: false }
+            'rebet': { name: 'ReBet', default: false }
         };
+
+        // Always fetched alongside the selected books as the no-vig benchmark
+        const BENCHMARK_BOOK = 'pinnacle';
+
+        // The Odds API bills each group of 10 requested bookmakers as 1 region
+        function regionUnits() {
+            return Math.max(1, Math.ceil((selectedBookmakers.length + 1) / 10));
+        }
 
         // Available O/U lines
         const OU_LINES = [
@@ -975,8 +993,9 @@
         let bttsData = {};
         let selectedBttsEvents = new Set();
 
-        // Settings persistence
-        const SETTINGS_KEY = 'soccer_odds_settings';
+        // Settings persistence (v2: bumped when the book list was rebuilt so
+        // stale saved selections with dead bookmaker keys don't carry over)
+        const SETTINGS_KEY = 'soccer_odds_settings_v2';
 
         function loadSettings() {
             try {
@@ -1010,6 +1029,8 @@
         const oddsFormatSelect = document.getElementById('oddsFormatSelect');
         const creditsBadgeGroup = document.getElementById('creditsBadgeGroup');
         const creditsDisplay = document.getElementById('creditsDisplay');
+        const lastCostGroup = document.getElementById('lastCostGroup');
+        const lastCostDisplay = document.getElementById('lastCostDisplay');
 
         // Initialize settings (restoring any saved selections)
         function initSettings() {
@@ -1077,6 +1098,8 @@
                 } else {
                     selectedBookmakers = selectedBookmakers.filter(k => k !== key);
                 }
+                updateCostDisplay();
+                updateBttsButton();
                 saveSettings();
             }
         });
@@ -1133,9 +1156,7 @@
             let markets = 1;
             if (selectedOULines.length > 0) markets++;
             if (selectedAHLines.length > 0) markets++;
-            const regions = 3;
-            const cost = markets * regions;
-            costDisplay.textContent = cost;
+            costDisplay.textContent = markets * regionUnits();
         }
 
         settingsToggle.addEventListener('click', () => {
@@ -1201,6 +1222,11 @@
                 creditsBadgeGroup.style.display = '';
                 creditsDisplay.textContent = Math.round(parseFloat(remaining));
             }
+            const lastCost = response.headers.get('x-requests-last');
+            if (lastCost !== null) {
+                lastCostGroup.style.display = '';
+                lastCostDisplay.textContent = Math.round(parseFloat(lastCost));
+            }
         }
 
         function showError(msg) {
@@ -1242,7 +1268,8 @@
                 if (selectedOULines.length > 0) markets.push('totals');
                 if (selectedAHLines.length > 0) markets.push('spreads');
 
-                const apiUrl = `${API_BASE}/sports/${sport}/odds?apiKey=${apiKey}&regions=us,us2,eu&markets=${markets.join(',')}&oddsFormat=decimal`;
+                const books = [...selectedBookmakers, BENCHMARK_BOOK].join(',');
+                const apiUrl = `${API_BASE}/sports/${sport}/odds?apiKey=${apiKey}&bookmakers=${books}&markets=${markets.join(',')}&oddsFormat=decimal`;
                 
                 const response = await fetch(apiUrl);
                 updateCreditsFromResponse(response);
@@ -1283,7 +1310,8 @@
 
         async function fetchBttsForEvent(eventId) {
             try {
-                const apiUrl = `${API_BASE}/sports/${currentSport}/events/${eventId}/odds?apiKey=${apiKey}&regions=us,us2,eu&markets=btts&oddsFormat=decimal`;
+                const books = [...selectedBookmakers, BENCHMARK_BOOK].join(',');
+                const apiUrl = `${API_BASE}/sports/${currentSport}/events/${eventId}/odds?apiKey=${apiKey}&bookmakers=${books}&markets=btts&oddsFormat=decimal`;
                 
                 const response = await fetch(apiUrl);
                 updateCreditsFromResponse(response);
@@ -1451,32 +1479,33 @@
             return devigFairOdds(target.price, group);
         }
 
-        function getValueIndicator(bestOdds, fairOdds) {
+        // Edge of the best available price vs Pinnacle's no-vig fair price:
+        // green badge = +EV, plain gray = a little below fair, red = 5%+ below
+        function getEdgeBadge(bestOdds, fairOdds) {
             if (!bestOdds || !fairOdds) return '';
 
             const edge = bestOdds / fairOdds - 1;
             const pct = (edge * 100).toFixed(1);
+            const label = edge > 0 ? `+${pct}%` : `${pct}%`;
+            const title = `vs Pinnacle no-vig fair price (${formatOdds(fairOdds)})`;
 
-            if (edge >= 0.01) {
-                return `<span class="value-indicator fire" title="+${pct}% vs Pinnacle no-vig fair price (+EV)">🔥</span>`;
-            } else if (edge <= -0.05) {
-                return `<span class="value-indicator ice" title="${pct}% vs Pinnacle no-vig fair price">🧊</span>`;
-            }
-            return '';
+            let cls = 'edge-mid';
+            if (edge > 0) cls = 'edge-pos';
+            else if (edge <= -0.05) cls = 'edge-neg';
+
+            return `<span class="edge-badge ${cls}" title="${title}">${label}</span>`;
         }
 
         function renderOddsCellHtml(odds, fairOdds = null) {
             if (!odds.value) {
                 return '<span class="odds-na">-</span>';
             }
-            const indicator = getValueIndicator(odds.value, fairOdds);
+            const badge = getEdgeBadge(odds.value, fairOdds);
             return `
                 <div class="odds-display">
-                    <div class="odds-with-indicator">
-                        <span class="odds-value">${formatOdds(odds.value)}</span>
-                        ${indicator}
-                    </div>
+                    <span class="odds-value">${formatOdds(odds.value)}</span>
                     <span class="odds-source">${odds.source}</span>
+                    ${badge}
                 </div>
             `;
         }
@@ -1502,7 +1531,7 @@
 
             const count = selectedBttsEvents.size;
             bttsBtn.disabled = count === 0;
-            bttsBtn.innerHTML = `<span>⚽</span> Fetch BTTS for ${count} selected (Cost: ${count})`;
+            bttsBtn.innerHTML = `<span>⚽</span> Fetch BTTS for ${count} selected (Cost: ${count * regionUnits()})`;
         }
 
         function renderTable(events) {
@@ -1650,7 +1679,7 @@
                 </div>
                 <div class="table-footer">
                     Best odds from: ${bookNames}<br>
-                    <span style="font-size: 10px;">🔥 = beats Pinnacle's no-vig fair price (+EV) | 🧊 = 5%+ below fair price | hover an icon for the exact edge | BTTS fetched separately per match (1 API call each)</span>
+                    <span style="font-size: 10px;">Green % = beats Pinnacle's no-vig fair price (+EV) | gray % = slightly below fair | red % = 5%+ below fair | hover a badge to see the fair price | BTTS costs ${regionUnits()} credit${regionUnits() > 1 ? 's' : ''} per match</span>
                 </div>
             `;
 
