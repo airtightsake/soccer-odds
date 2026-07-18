@@ -904,8 +904,6 @@
             'williamhill_us': { name: 'Caesars', default: true },
             'fanatics': { name: 'Fanatics', default: true },
             'betonlineag': { name: 'BetOnline', default: true },
-            'espnbet': { name: 'theScore Bet', default: true },
-            'bet365_au': { name: 'Bet365 (AU)', default: true },
             'fliff': { name: 'Fliff', default: false },
             'hardrockbet': { name: 'Hard Rock', default: false },
             'betrivers': { name: 'BetRivers', default: false },
@@ -1037,6 +1035,7 @@
         let currentSport = '';
         let bttsData = {};
         let selectedBttsEvents = new Set();
+        let enrichedAltEvents = new Set();
 
         // Settings persistence (v2: bumped when the book list was rebuilt so
         // stale saved selections with dead bookmaker keys don't carry over)
@@ -1186,14 +1185,7 @@
             saveSettings();
             if (currentEvents.length > 0) {
                 renderTable(currentEvents);
-                // Restore BTTS checkbox state lost in the re-render
-                selectedBttsEvents.forEach(eventId => {
-                    const cb = document.querySelector(`.btts-checkbox[data-event-id="${eventId}"]`);
-                    if (cb) cb.checked = true;
-                    const row = document.getElementById(`row-${eventId}`);
-                    if (row) row.classList.add('btts-selected');
-                });
-                updateBttsButton();
+                restoreBttsSelections();
             }
         });
 
@@ -1306,6 +1298,7 @@
 
             bttsData = {};
             selectedBttsEvents = new Set();
+            enrichedAltEvents = new Set();
             currentSport = sport;
 
             try {
@@ -1353,25 +1346,70 @@
             fetchBtn.disabled = false;
         }
 
-        async function fetchBttsForEvent(eventId) {
+        // Merge alternate_totals outcomes from a per-event response into the
+        // event's featured totals markets, so the O/U columns (and Pinnacle
+        // fair-price pairing) can use them. Books like FanDuel post no
+        // featured soccer totals but a full ladder of alternate lines.
+        function mergeAltTotals(event, respBookmakers) {
+            if (!respBookmakers) return;
+            respBookmakers.forEach(rb => {
+                const alt = rb.markets?.find(m => m.key === 'alternate_totals');
+                if (!alt || !alt.outcomes) return;
+
+                let bm = event.bookmakers?.find(b => b.key === rb.key);
+                if (!bm) {
+                    bm = { key: rb.key, title: rb.title, markets: [] };
+                    event.bookmakers = event.bookmakers || [];
+                    event.bookmakers.push(bm);
+                }
+
+                let totals = bm.markets.find(m => m.key === 'totals');
+                if (!totals) {
+                    totals = { key: 'totals', outcomes: [] };
+                    bm.markets.push(totals);
+                }
+
+                const seen = new Set(totals.outcomes.map(o => `${o.name}|${o.point}`));
+                alt.outcomes.forEach(o => {
+                    const id = `${o.name}|${o.point}`;
+                    if (!seen.has(id)) {
+                        totals.outcomes.push(o);
+                        seen.add(id);
+                    }
+                });
+            });
+            enrichedAltEvents.add(event.id);
+        }
+
+        async function fetchEventMarkets(eventId, markets) {
             try {
                 const books = [...selectedBookmakers, BENCHMARK_BOOK].join(',');
-                const apiUrl = `${API_BASE}/sports/${currentSport}/events/${eventId}/odds?apiKey=${apiKey}&bookmakers=${books}&markets=btts&oddsFormat=decimal`;
+                const apiUrl = `${API_BASE}/sports/${currentSport}/events/${eventId}/odds?apiKey=${apiKey}&bookmakers=${books}&markets=${markets.join(',')}&oddsFormat=decimal`;
                 
                 const response = await fetch(apiUrl);
                 updateCreditsFromResponse(response);
 
                 if (!response.ok) {
-                    console.error(`BTTS fetch failed for ${eventId}`);
+                    console.error(`Event odds fetch failed for ${eventId}`);
                     return null;
                 }
 
                 const data = await response.json();
                 return data;
             } catch (error) {
-                console.error(`BTTS fetch error for ${eventId}:`, error);
+                console.error(`Event odds fetch error for ${eventId}:`, error);
                 return null;
             }
+        }
+
+        function restoreBttsSelections() {
+            selectedBttsEvents.forEach(eventId => {
+                const cb = document.querySelector(`.btts-checkbox[data-event-id="${eventId}"]`);
+                if (cb) cb.checked = true;
+                const row = document.getElementById(`row-${eventId}`);
+                if (row) row.classList.add('btts-selected');
+            });
+            updateBttsButton();
         }
 
         async function fetchBttsForSelected() {
@@ -1392,18 +1430,63 @@
             });
 
             for (const eventId of selectedIds) {
-                const data = await fetchBttsForEvent(eventId);
-                
+                // Skip alternate_totals if this match was already enriched —
+                // the API bills per market returned
+                const markets = enrichedAltEvents.has(eventId)
+                    ? ['btts']
+                    : ['btts', 'alternate_totals'];
+                const data = await fetchEventMarkets(eventId, markets);
+
                 if (data && data.bookmakers) {
                     bttsData[eventId] = data.bookmakers;
+                    const event = currentEvents.find(e => e.id === eventId);
+                    if (event && markets.includes('alternate_totals')) {
+                        mergeAltTotals(event, data.bookmakers);
+                    }
                 }
 
-                updateBttsCells(eventId);
                 await new Promise(resolve => setTimeout(resolve, 100));
             }
 
-            if (bttsBtn) {
-                updateBttsButton();
+            renderTable(currentEvents);
+            restoreBttsSelections();
+        }
+
+        async function fillAltTotalsForAll() {
+            const pending = currentEvents.filter(e => !enrichedAltEvents.has(e.id));
+            if (pending.length === 0) return;
+
+            const fillBtn = document.getElementById('fillOuBtn');
+            let done = 0;
+
+            for (const event of pending) {
+                if (fillBtn) {
+                    fillBtn.disabled = true;
+                    fillBtn.innerHTML = `<span class="btts-loading"></span> Filling ${done + 1}/${pending.length}...`;
+                }
+                const data = await fetchEventMarkets(event.id, ['alternate_totals']);
+                if (data && data.bookmakers) {
+                    mergeAltTotals(event, data.bookmakers);
+                }
+                done++;
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+
+            renderTable(currentEvents);
+            restoreBttsSelections();
+        }
+
+        function updateFillOuButton() {
+            const fillBtn = document.getElementById('fillOuBtn');
+            if (!fillBtn) return;
+
+            const remaining = currentEvents.filter(e => !enrichedAltEvents.has(e.id)).length;
+            if (remaining === 0) {
+                fillBtn.disabled = true;
+                fillBtn.innerHTML = `<span>✓</span> Alt O/U lines loaded`;
+            } else {
+                fillBtn.disabled = false;
+                fillBtn.innerHTML = `<span>⚡</span> Fill O/U columns from alt lines (Cost: ${remaining * regionUnits()})`;
             }
         }
 
@@ -1575,8 +1658,12 @@
             if (!bttsBtn) return;
 
             const count = selectedBttsEvents.size;
+            let cost = 0;
+            selectedBttsEvents.forEach(id => {
+                cost += (enrichedAltEvents.has(id) ? 1 : 2) * regionUnits();
+            });
             bttsBtn.disabled = count === 0;
-            bttsBtn.innerHTML = `<span>⚽</span> Fetch BTTS for ${count} selected (Cost: ${count * regionUnits()})`;
+            bttsBtn.innerHTML = `<span>⚽</span> Fetch BTTS + alt O/U for ${count} selected (Cost: ${cost})`;
         }
 
         // Per-book diagnostic: which markets and O/U points each requested
@@ -1686,10 +1773,13 @@
                     </div>
                 </div>
                 <div class="btts-controls">
-                    <button class="btn btn-btts" id="bttsBtn" disabled>
-                        <span>⚽</span> Fetch BTTS for 0 selected (Cost: 0)
+                    <button class="btn btn-secondary" id="fillOuBtn" disabled>
+                        <span>⚡</span> Fill O/U columns from alt lines
                     </button>
-                    <span class="btts-info">Select matches with checkboxes, then click to fetch BTTS odds</span>
+                    <button class="btn btn-btts" id="bttsBtn" disabled>
+                        <span>⚽</span> Fetch BTTS + alt O/U for 0 selected (Cost: 0)
+                    </button>
+                    <span class="btts-info">⚡ pulls alternate O/U lines (FanDuel, BetMGM, Pinnacle) into the O/U columns for every match · ☑ + ⚽ fetches BTTS for selected matches</span>
                 </div>
                 <div class="table-scroll">
                     <table>
@@ -1791,7 +1881,7 @@
                 </div>
                 <div class="table-footer">
                     Best odds from: ${bookNames}<br>
-                    <span style="font-size: 10px;">Green % = beats Pinnacle's no-vig fair price (+EV) | gray % = slightly below fair | red % = 5%+ below fair | hover a badge to see the fair price | BTTS costs ${regionUnits()} credit${regionUnits() > 1 ? 's' : ''} per match</span>
+                    <span style="font-size: 10px;">Green % = beats Pinnacle's no-vig fair price (+EV) | gray % = slightly below fair | red % = 5%+ below fair | hover a badge to see the fair price | alt O/U fill costs ${regionUnits()} credit${regionUnits() > 1 ? 's' : ''} per match, BTTS ${2 * regionUnits()} (or ${regionUnits()} if alt lines already loaded)</span>
                     ${buildCoverageHtml(events)}
                 </div>
             `;
@@ -1802,6 +1892,12 @@
             if (bttsBtn) {
                 bttsBtn.addEventListener('click', fetchBttsForSelected);
             }
+
+            const fillBtn = document.getElementById('fillOuBtn');
+            if (fillBtn) {
+                fillBtn.addEventListener('click', fillAltTotalsForAll);
+            }
+            updateFillOuButton();
         }
 
         // Initialize on load
