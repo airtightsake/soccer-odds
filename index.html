@@ -94,6 +94,12 @@
             background-clip: text;
         }
 
+        .header-keys {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
         .api-key-input {
             display: flex;
             align-items: center;
@@ -117,8 +123,12 @@
             color: var(--text);
             font-family: 'IBM Plex Mono', monospace;
             font-size: 13px;
-            width: 260px;
+            width: 220px;
             outline: none;
+        }
+
+        .api-key-input.secondary input {
+            width: 180px;
         }
 
         .api-key-input input::placeholder {
@@ -714,6 +724,26 @@
             color: var(--orange);
         }
 
+        .coverage-note {
+            margin-top: 8px;
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        .coverage-note .warn {
+            color: var(--orange);
+        }
+
+        .warning-banner {
+            background: rgba(249, 115, 22, 0.1);
+            border: 1px solid rgba(249, 115, 22, 0.3);
+            color: var(--orange);
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
         .loading-state {
             display: flex;
             flex-direction: column;
@@ -783,8 +813,10 @@
                 gap: 16px;
                 align-items: flex-start;
             }
+            .header-keys { width: 100%; }
             .api-key-input { width: 100%; }
             .api-key-input input { flex: 1; width: auto; }
+            .api-key-input.secondary input { width: auto; }
             .checkbox-grid {
                 grid-template-columns: repeat(2, 1fr);
             }
@@ -802,9 +834,15 @@
                 <div class="brand-icon">⚽</div>
                 <div class="brand-name">Best <span>Odds</span></div>
             </div>
-            <div class="api-key-input">
-                <label>API Key:</label>
-                <input type="password" id="apiKey" placeholder="the-odds-api.com key" />
+            <div class="header-keys">
+                <div class="api-key-input">
+                    <label>Odds API:</label>
+                    <input type="password" id="apiKey" placeholder="the-odds-api.com key" />
+                </div>
+                <div class="api-key-input secondary">
+                    <label>API-Football:</label>
+                    <input type="password" id="apiFootballKey" placeholder="optional · adds Bet365" />
+                </div>
             </div>
         </header>
 
@@ -846,6 +884,12 @@
                     Credits left: <span class="cost-value" id="creditsDisplay">—</span>
                 </div>
             </div>
+            <div class="control-group small" id="afBadgeGroup" style="display: none;">
+                <label>&nbsp;</label>
+                <div class="cost-badge" title="API-Football requests used today / daily limit (shared with any other process using this key)">
+                    API-Football today: <span class="cost-value" id="afUsageDisplay">—</span>
+                </div>
+            </div>
         </div>
 
         <div class="settings-panel">
@@ -857,7 +901,7 @@
             </div>
             <div class="settings-content" id="settingsContent">
                 <div class="settings-section">
-                    <div class="settings-section-title">Sportsbooks (10 total incl. Pinnacle = cheapest API calls)</div>
+                    <div class="settings-section-title">Sportsbooks (up to 9 Odds API books + Pinnacle = 1 billing unit · Bet365 comes from API-Football)</div>
                     <div class="checkbox-grid" id="bookmakersGrid">
                         <!-- Populated by JS -->
                     </div>
@@ -914,16 +958,101 @@
             'mybookieag': { name: 'MyBookie', default: false },
             'betus': { name: 'BetUS', default: false },
             'lowvig': { name: 'LowVig', default: false },
-            'rebet': { name: 'ReBet', default: false }
+            'rebet': { name: 'ReBet', default: false },
+            // Not in The Odds API at all for soccer. Priced from API-Football
+            // (bookmaker id 8) when an API-Football key is entered: 1X2, the
+            // O/U ladder and BTTS. Never sent in the Odds API bookmakers= param.
+            'bet365': { name: 'Bet365', default: true, source: 'apifootball' }
         };
 
         // Always fetched alongside the selected books as the no-vig benchmark
         const BENCHMARK_BOOK = 'pinnacle';
 
+        function isApiFootballBook(key) {
+            return ALL_BOOKMAKERS[key]?.source === 'apifootball';
+        }
+
+        // Books that go in The Odds API request (everything except API-Football-sourced ones)
+        function oddsApiBooks() {
+            return selectedBookmakers.filter(k => !isApiFootballBook(k));
+        }
+
         // The Odds API bills each group of 10 requested bookmakers as 1 region
         function regionUnits() {
-            return Math.max(1, Math.ceil((selectedBookmakers.length + 1) / 10));
+            return Math.max(1, Math.ceil((oddsApiBooks().length + 1) / 10));
         }
+
+        // ---- API-Football (api-sports.io) — second odds source ----
+        // One /fixtures call (ids + team names) plus one /odds call per
+        // kickoff date per book. Counts against the key's daily request
+        // quota, which is shared with anything else using the same key.
+        const APIFOOTBALL_BASE = 'https://v3.football.api-sports.io';
+        const APIFOOTBALL_BOOKS = { 'bet365': { id: 8 } };
+        const APIFOOTBALL_MAX_DAYS = 8;      // only price kickoffs within this window
+        const APIFOOTBALL_MAX_PAGES = 5;     // /odds pages per date (10 fixtures per page)
+
+        // Odds API sport key -> API-Football league id. calendarYear leagues
+        // use the kickoff year as the season; the rest use the Jul-Jun season
+        // start year. Ids marked (v) were verified against the BettingModels
+        // leagues table; the others are API-Football's published ids.
+        const APIFOOTBALL_LEAGUES = {
+            'soccer_epl': { id: 39 },                         // (v)
+            'soccer_efl_champ': { id: 40 },                   // (v)
+            'soccer_england_league1': { id: 41 },             // (v)
+            'soccer_england_league2': { id: 42 },             // (v)
+            'soccer_fa_cup': { id: 45 },
+            'soccer_england_efl_cup': { id: 48 },
+            'soccer_spain_la_liga': { id: 140 },              // (v)
+            'soccer_spain_segunda_division': { id: 141 },     // (v)
+            'soccer_germany_bundesliga': { id: 78 },          // (v)
+            'soccer_germany_bundesliga2': { id: 79 },         // (v)
+            'soccer_germany_liga3': { id: 80 },
+            'soccer_italy_serie_a': { id: 135 },              // (v)
+            'soccer_italy_serie_b': { id: 136 },              // (v)
+            'soccer_france_ligue_one': { id: 61 },            // (v)
+            'soccer_france_ligue_two': { id: 62 },            // (v)
+            'soccer_netherlands_eredivisie': { id: 88 },      // (v)
+            'soccer_belgium_first_div': { id: 144 },          // (v)
+            'soccer_portugal_primeira_liga': { id: 94 },      // (v)
+            'soccer_spl': { id: 179 },                        // (v)
+            'soccer_turkey_super_league': { id: 203 },        // (v)
+            'soccer_greece_super_league': { id: 197 },        // (v)
+            'soccer_austria_bundesliga': { id: 218 },
+            'soccer_switzerland_superleague': { id: 207 },    // (v)
+            'soccer_denmark_superliga': { id: 119 },          // (v)
+            'soccer_sweden_allsvenskan': { id: 113, calendarYear: true },   // (v)
+            'soccer_sweden_superettan': { id: 114, calendarYear: true },
+            'soccer_norway_eliteserien': { id: 103, calendarYear: true },   // (v)
+            'soccer_finland_veikkausliiga': { id: 244, calendarYear: true }, // (v)
+            'soccer_poland_ekstraklasa': { id: 106 },         // (v)
+            'soccer_russia_premier_league': { id: 235 },
+            'soccer_league_of_ireland': { id: 357, calendarYear: true },
+            'soccer_uefa_champs_league': { id: 2 },
+            'soccer_uefa_europa_league': { id: 3 },
+            'soccer_uefa_europa_conference_league': { id: 848 },
+            'soccer_uefa_nations_league': { id: 5 },
+            'soccer_uefa_european_championship': { id: 4, calendarYear: true },
+            'soccer_uefa_champs_league_women': { id: 525 },
+            'soccer_usa_mls': { id: 253, calendarYear: true },              // (v)
+            'soccer_mexico_ligamx': { id: 262 },              // (v)
+            'soccer_brazil_campeonato': { id: 71, calendarYear: true },     // (v)
+            'soccer_brazil_serie_b': { id: 72, calendarYear: true },        // (v)
+            'soccer_argentina_primera_division': { id: 128, calendarYear: true }, // (v)
+            'soccer_chile_campeonato': { id: 265, calendarYear: true },
+            'soccer_conmebol_copa_libertadores': { id: 13, calendarYear: true },
+            'soccer_conmebol_copa_sudamericana': { id: 11, calendarYear: true },
+            'soccer_conmebol_copa_america': { id: 9, calendarYear: true },
+            'soccer_concacaf_gold_cup': { id: 22, calendarYear: true },
+            'soccer_concacaf_leagues_cup': { id: 772, calendarYear: true },
+            'soccer_australia_aleague': { id: 188 },          // (v)
+            'soccer_japan_j_league': { id: 98, calendarYear: true },        // (v)
+            'soccer_korea_kleague1': { id: 292, calendarYear: true },
+            'soccer_china_superleague': { id: 169, calendarYear: true },    // (v)
+            'soccer_fifa_world_cup': { id: 1, calendarYear: true },
+            'soccer_fifa_world_cup_womens': { id: 8, calendarYear: true },
+            'soccer_fifa_club_world_cup': { id: 15, calendarYear: true },
+            'soccer_africa_cup_of_nations': { id: 6, calendarYear: true }
+        };
 
         // Available O/U lines
         const OU_LINES = [
@@ -1036,10 +1165,13 @@
         let bttsData = {};
         let selectedBttsEvents = new Set();
         let enrichedAltEvents = new Set();
+        let apiFootballKey = '';
+        let apiFootballStatus = null;   // result of the last API-Football merge, shown in the coverage panel
 
-        // Settings persistence (v2: bumped when the book list was rebuilt so
-        // stale saved selections with dead bookmaker keys don't carry over)
-        const SETTINGS_KEY = 'soccer_odds_settings_v2';
+        // Settings persistence (v3: bumped when Bet365 (API-Football) joined
+        // the book list so it is selected by default on existing installs)
+        const SETTINGS_KEY = 'soccer_odds_settings_v3';
+        const APIFOOTBALL_KEY_STORAGE = 'soccer_odds_apifootball_key';
 
         function loadSettings() {
             try {
@@ -1075,6 +1207,9 @@
         const creditsDisplay = document.getElementById('creditsDisplay');
         const lastCostGroup = document.getElementById('lastCostGroup');
         const lastCostDisplay = document.getElementById('lastCostDisplay');
+        const apiFootballKeyInput = document.getElementById('apiFootballKey');
+        const afBadgeGroup = document.getElementById('afBadgeGroup');
+        const afUsageDisplay = document.getElementById('afUsageDisplay');
 
         // Initialize settings (restoring any saved selections)
         function initSettings() {
@@ -1203,6 +1338,11 @@
         });
 
         function loadSavedApiKey() {
+            const savedAf = localStorage.getItem(APIFOOTBALL_KEY_STORAGE);
+            if (savedAf) {
+                apiFootballKeyInput.value = savedAf;
+                apiFootballKey = savedAf;
+            }
             const savedKey = localStorage.getItem('soccer_odds_api_key');
             if (savedKey) {
                 apiKeyInput.value = savedKey;
@@ -1234,6 +1374,15 @@
                 leagueSelect.innerHTML = '<option value="">Enter API key first...</option>';
                 leagueSelect.disabled = true;
                 fetchBtn.disabled = true;
+            }
+        });
+
+        apiFootballKeyInput.addEventListener('input', () => {
+            apiFootballKey = apiFootballKeyInput.value.trim();
+            if (apiFootballKey.length > 10) {
+                localStorage.setItem(APIFOOTBALL_KEY_STORAGE, apiFootballKey);
+            } else {
+                localStorage.removeItem(APIFOOTBALL_KEY_STORAGE);
             }
         });
 
@@ -1270,15 +1419,19 @@
             errorBox.innerHTML = `<div class="error-banner">⚠️ ${msg}</div>`;
         }
 
+        function showWarning(msg) {
+            errorBox.innerHTML = `<div class="warning-banner">⚠️ ${msg}</div>`;
+        }
+
         function clearError() {
             errorBox.innerHTML = '';
         }
 
-        function showLoading() {
+        function showLoading(message = 'Fetching best odds...') {
             tableContainer.innerHTML = `
                 <div class="loading-state">
                     <div class="spinner"></div>
-                    <p>Fetching best odds...</p>
+                    <p>${message}</p>
                 </div>
             `;
         }
@@ -1287,8 +1440,8 @@
             const sport = leagueSelect.value;
             if (!sport || !apiKey) return;
 
-            if (selectedBookmakers.length === 0) {
-                showError('Please select at least one sportsbook');
+            if (oddsApiBooks().length === 0) {
+                showError('Select at least one Odds API sportsbook — Bet365 (API-Football) is merged into matches that The Odds API returns');
                 return;
             }
 
@@ -1299,6 +1452,7 @@
             bttsData = {};
             selectedBttsEvents = new Set();
             enrichedAltEvents = new Set();
+            apiFootballStatus = null;
             currentSport = sport;
 
             try {
@@ -1306,7 +1460,7 @@
                 if (selectedOULines.length > 0) markets.push('totals');
                 if (selectedAHLines.length > 0) markets.push('spreads');
 
-                const books = [...selectedBookmakers, BENCHMARK_BOOK].join(',');
+                const books = [...oddsApiBooks(), BENCHMARK_BOOK].join(',');
                 const apiUrl = `${API_BASE}/sports/${sport}/odds?apiKey=${apiKey}&bookmakers=${books}&markets=${markets.join(',')}&oddsFormat=decimal`;
                 
                 const response = await fetch(apiUrl);
@@ -1329,6 +1483,13 @@
                         </div>
                     `;
                 } else {
+                    if (apiFootballWanted()) {
+                        showLoading('Adding Bet365 from API-Football...');
+                        apiFootballStatus = await mergeApiFootball(sport, data);
+                        if (apiFootballStatus.error) {
+                            showWarning(`API-Football: ${apiFootballStatus.error} — showing Odds API books only`);
+                        }
+                    }
                     renderTable(data);
                 }
 
@@ -1383,7 +1544,7 @@
 
         async function fetchEventMarkets(eventId, markets) {
             try {
-                const books = [...selectedBookmakers, BENCHMARK_BOOK].join(',');
+                const books = [...oddsApiBooks(), BENCHMARK_BOOK].join(',');
                 const apiUrl = `${API_BASE}/sports/${currentSport}/events/${eventId}/odds?apiKey=${apiKey}&bookmakers=${books}&markets=${markets.join(',')}&oddsFormat=decimal`;
                 
                 const response = await fetch(apiUrl);
@@ -1400,6 +1561,276 @@
                 console.error(`Event odds fetch error for ${eventId}:`, error);
                 return null;
             }
+        }
+
+        // ---- API-Football merge ----------------------------------------
+        // Why the API-Football merge does or doesn't run for the current selection
+        function apiFootballReason() {
+            if (!selectedBookmakers.some(isApiFootballBook)) return 'Bet365 not selected';
+            if (!apiFootballKey) return 'Bet365 selected but no API-Football key entered';
+            if (!APIFOOTBALL_LEAGUES[leagueSelect.value]) return 'API-Football: no league id mapped for this competition';
+            return '';
+        }
+
+        function apiFootballWanted() {
+            return apiFootballReason() === '';
+        }
+
+        // Team-name normalisation for matching API-Football fixtures to Odds
+        // API events (same approach as the Germany Lab collector): strip
+        // accents, lower-case, drop club-form tokens (FC, SV, 1., 1899...).
+        const AF_STOP_TOKENS = new Set([
+            'fc', 'sc', 'sv', 'sg', 'vfl', 'vfb', 'spvgg', 'bsc', 'tsg', 'tsv', 'fsv',
+            'ac', 'as', 'us', 'ss', 'cf', 'cd', 'ud', 'rc', 'rcd', 'afc', 'cfc', 'sk',
+            'club', 'football', 'fussball', 'de', 'e', 'v', 'if', 'bk', 'ff', 'fk',
+            '1', '04', '05', '09', '1846', '1860', '1899', '1904', '1907', '1909', '1910', '1912'
+        ]);
+
+        function afNormalize(name) {
+            const ascii = String(name || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+            return ascii.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(' ')
+                .filter(t => t && !AF_STOP_TOKENS.has(t));
+        }
+
+        // Sørensen–Dice over character bigrams
+        function afDice(a, b) {
+            if (a.length < 2 || b.length < 2) return a === b ? 1 : 0;
+            const grams = s => {
+                const m = new Map();
+                for (let i = 0; i < s.length - 1; i++) {
+                    const g = s.slice(i, i + 2);
+                    m.set(g, (m.get(g) || 0) + 1);
+                }
+                return m;
+            };
+            const ga = grams(a), gb = grams(b);
+            let inter = 0;
+            ga.forEach((c, g) => { if (gb.has(g)) inter += Math.min(c, gb.get(g)); });
+            return (2 * inter) / ((a.length - 1) + (b.length - 1));
+        }
+
+        function afSimilarity(a, b) {
+            const ta = afNormalize(a), tb = afNormalize(b);
+            if (!ta.length || !tb.length) return 0;
+            const sa = ta.join(' '), sb = tb.join(' ');
+            if (sa === sb) return 1;
+            const A = new Set(ta), B = new Set(tb);
+            let inter = 0;
+            A.forEach(t => { if (B.has(t)) inter++; });
+            const jaccard = inter / new Set([...A, ...B]).size;
+            const contain = (sa.includes(sb) || sb.includes(sa)) ? 0.95 : 0;
+            return Math.max(afDice(sa, sb), jaccard, contain);
+        }
+
+        // Find the Odds API event for one API-Football fixture. Kickoff must
+        // be within 2h; names must agree, or one side must be near-exact with
+        // the same kickoff minute. Two close candidates = no match.
+        function afMatchEvent(events, fixture) {
+            const t = Date.parse(fixture.date);
+            let best = null, second = null;
+            events.forEach(ev => {
+                const dt = Math.abs(Date.parse(ev.commence_time) - t);
+                if (!(dt <= 2 * 3600e3)) return;
+                const h = afSimilarity(fixture.home, ev.home_team);
+                const a = afSimilarity(fixture.away, ev.away_team);
+                const pair = (h + a) / 2;
+                const ok = pair >= 0.78
+                    || (dt <= 15 * 60e3 && Math.max(h, a) >= 0.9 && Math.min(h, a) >= 0.3);
+                if (!ok) return;
+                const cand = { ev, pair };
+                if (!best || pair > best.pair) { second = best; best = cand; }
+                else if (!second || pair > second.pair) second = cand;
+            });
+            if (!best) return null;
+            if (second && best.pair - second.pair < 0.05) return null;
+            return best.ev;
+        }
+
+        // Turn one API-Football /odds entry into an Odds-API-shaped bookmaker
+        // (h2h with the event's team names, totals with points, btts Yes/No)
+        function afBookmakerFromOdds(entry, event, bookKey) {
+            const bm = entry.bookmakers?.[0];
+            if (!bm || !Array.isArray(bm.bets)) return null;
+            const bets = new Map(bm.bets.map(b => [b.name, Array.isArray(b.values) ? b.values : []]));
+            const price = v => {
+                const p = parseFloat(v?.odd);
+                return Number.isFinite(p) && p > 1 ? p : null;
+            };
+            const markets = [];
+
+            const mw = bets.get('Match Winner');
+            if (mw) {
+                const outcomes = [];
+                mw.forEach(v => {
+                    const p = price(v);
+                    const name = v.value === 'Home' ? event.home_team
+                        : v.value === 'Away' ? event.away_team
+                        : v.value === 'Draw' ? 'Draw' : null;
+                    if (p && name) outcomes.push({ name, price: p });
+                });
+                if (outcomes.length === 3) markets.push({ key: 'h2h', last_update: entry.update, outcomes });
+            }
+
+            const ou = bets.get('Goals Over/Under');
+            if (ou) {
+                const outcomes = [];
+                ou.forEach(v => {
+                    const m = /^(Over|Under)\s+(\d+(?:\.\d+)?)$/.exec(v.value || '');
+                    const p = price(v);
+                    if (m && p) outcomes.push({ name: m[1], price: p, point: parseFloat(m[2]) });
+                });
+                if (outcomes.length) markets.push({ key: 'totals', last_update: entry.update, outcomes });
+            }
+
+            const btts = bets.get('Both Teams Score');
+            if (btts) {
+                const outcomes = [];
+                btts.forEach(v => {
+                    const p = price(v);
+                    if (p && (v.value === 'Yes' || v.value === 'No')) outcomes.push({ name: v.value, price: p });
+                });
+                if (outcomes.length === 2) markets.push({ key: 'btts', last_update: entry.update, outcomes });
+            }
+
+            if (!markets.length) return null;
+            return {
+                key: bookKey,
+                title: ALL_BOOKMAKERS[bookKey]?.name || bookKey,
+                source: 'apifootball',
+                last_update: entry.update,
+                markets
+            };
+        }
+
+        // Attach API-Football odds entries to the Odds API events they belong to
+        function afApplyOdds(events, fixturesById, oddsEntries, bookKey) {
+            const result = { matched: 0, priced: 0, unmatched: [] };
+            oddsEntries.forEach(entry => {
+                const fx = fixturesById[entry.fixture?.id];
+                if (!fx) return;
+                const event = afMatchEvent(events, fx);
+                if (!event) {
+                    result.unmatched.push(`${fx.home} v ${fx.away}`);
+                    return;
+                }
+                result.matched++;
+                const bm = afBookmakerFromOdds(entry, event, bookKey);
+                if (!bm) return;
+                event.bookmakers = (event.bookmakers || []).filter(b => b.key !== bookKey);
+                event.bookmakers.push(bm);
+                result.priced++;
+            });
+            return result;
+        }
+
+        function afSeasonFor(dateUtc, league) {
+            const y = dateUtc.getUTCFullYear();
+            if (league.calendarYear) return y;
+            return dateUtc.getUTCMonth() >= 6 ? y : y - 1;
+        }
+
+        async function afGet(path, params) {
+            const url = new URL(`${APIFOOTBALL_BASE}/${path}`);
+            Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+            const response = await fetch(url.toString(), { headers: { 'x-apisports-key': apiFootballKey } });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const json = await response.json();
+            // API-Football signals problems (bad key, daily limit) inside a
+            // 200 response as an errors object instead of an empty array
+            const errs = json.errors;
+            if (errs && !Array.isArray(errs) && Object.keys(errs).length) {
+                throw new Error(Object.values(errs).join('; '));
+            }
+            return json;
+        }
+
+        // Free call (does not count against the quota): shows today's usage
+        async function refreshApiFootballUsage() {
+            try {
+                const st = await afGet('status', {});
+                const rq = st.response?.requests;
+                if (rq && rq.limit_day) {
+                    afBadgeGroup.style.display = '';
+                    afUsageDisplay.textContent = `${rq.current}/${rq.limit_day}`;
+                }
+            } catch (e) {
+                console.warn('API-Football status unavailable', e);
+            }
+        }
+
+        // Price the loaded events from API-Football for every selected
+        // API-Football-sourced book. Mutates events in place; returns a status
+        // record for the coverage panel. Never throws — a failure here must
+        // not lose the Odds API data already fetched.
+        async function mergeApiFootball(sport, events) {
+            const league = APIFOOTBALL_LEAGUES[sport];
+            const status = { requests: 0, fixtures: 0, dates: 0, matched: 0, priced: 0, unmatched: [], error: null };
+            try {
+                const now = Date.now();
+                const horizon = now + APIFOOTBALL_MAX_DAYS * 86400e3;
+                const inWindow = events.filter(e => {
+                    const t = Date.parse(e.commence_time);
+                    return t >= now && t <= horizon;   // skip kicked-off matches: no request for a date with nothing upcoming
+                });
+                if (!inWindow.length) return status;
+
+                const dates = [...new Set(inWindow.map(e => e.commence_time.slice(0, 10)))].sort();
+                const season = afSeasonFor(new Date(inWindow[0].commence_time), league);
+                status.dates = dates.length;
+
+                const fx = await afGet('fixtures', {
+                    league: league.id, season, from: dates[0], to: dates[dates.length - 1]
+                });
+                status.requests++;
+                const fixturesById = {};
+                (fx.response || []).forEach(f => {
+                    if (!f?.fixture?.id) return;
+                    fixturesById[f.fixture.id] = {
+                        id: f.fixture.id,
+                        date: f.fixture.date,
+                        home: f.teams?.home?.name || '',
+                        away: f.teams?.away?.name || ''
+                    };
+                });
+                status.fixtures = Object.keys(fixturesById).length;
+                if (!status.fixtures) return status;
+
+                for (const bookKey of selectedBookmakers.filter(isApiFootballBook)) {
+                    const bookId = APIFOOTBALL_BOOKS[bookKey]?.id;
+                    if (!bookId) continue;
+                    for (const date of dates) {
+                        let page = 1, total = 1;
+                        do {
+                            const od = await afGet('odds', {
+                                league: league.id, season, date, bookmaker: bookId, page
+                            });
+                            status.requests++;
+                            total = od.paging?.total || 1;
+                            const r = afApplyOdds(events, fixturesById, od.response || [], bookKey);
+                            status.matched += r.matched;
+                            status.priced += r.priced;
+                            status.unmatched.push(...r.unmatched);
+                            page++;
+                        } while (page <= total && page <= APIFOOTBALL_MAX_PAGES);
+                    }
+                }
+            } catch (e) {
+                console.error('API-Football merge failed:', e);
+                status.error = e.message;
+            }
+            await refreshApiFootballUsage();
+            return status;
+        }
+
+        // BTTS prices for an event: per-event Odds API fetch (if done) plus
+        // any API-Football-sourced book that carried a btts market
+        function bttsBookmakers(eventId) {
+            const list = [...(bttsData[eventId] || [])];
+            const ev = currentEvents.find(e => e.id === eventId);
+            ev?.bookmakers?.forEach(b => {
+                if (b.source === 'apifootball' && b.markets?.some(m => m.key === 'btts')) list.push(b);
+            });
+            return list;
         }
 
         function restoreBttsSelections() {
@@ -1496,9 +1927,9 @@
             
             if (!yesCell || !noCell) return;
 
-            const bookmakers = bttsData[eventId];
+            const bookmakers = bttsBookmakers(eventId);
             
-            if (!bookmakers) {
+            if (!bookmakers.length) {
                 yesCell.innerHTML = '<span class="odds-na">-</span>';
                 noCell.innerHTML = '<span class="odds-na">-</span>';
                 return;
@@ -1672,20 +2103,23 @@
         function buildCoverageHtml(events) {
             const n = events.length;
             const rows = [...selectedBookmakers, BENCHMARK_BOOK].map(key => {
+                const isAf = isApiFootballBook(key);
                 const name = key === BENCHMARK_BOOK
                     ? 'Pinnacle (benchmark)'
-                    : (ALL_BOOKMAKERS[key]?.name || key);
+                    : (ALL_BOOKMAKERS[key]?.name || key) + (isAf ? ' (API-Football)' : '');
 
-                let present = 0, h2h = 0;
+                let present = 0, h2h = 0, btts = 0;
                 const totalsPoints = {};
                 const spreadPoints = {};
 
                 events.forEach(ev => {
                     const bm = ev.bookmakers?.find(b => b.key === key);
-                    if (!bm) return;
+                    const bttsBm = (bttsData[ev.id] || []).find(b => b.key === key);
+                    if (!bm && !bttsBm) return;
                     present++;
-                    bm.markets?.forEach(m => {
+                    [...(bm?.markets || []), ...(bttsBm?.markets || [])].forEach(m => {
                         if (m.key === 'h2h') h2h++;
+                        else if (m.key === 'btts') btts++;
                         else if (m.key === 'totals') {
                             m.outcomes?.forEach(o => {
                                 if (o.name === 'Over' && o.point !== undefined) {
@@ -1709,7 +2143,10 @@
                     .join(', ');
 
                 if (present === 0) {
-                    return `<tr><td>${name}</td><td class="coverage-none" colspan="4">no data returned (not offered by API for this league, or book requires a paid plan)</td></tr>`;
+                    const why = isAf
+                        ? (apiFootballKey ? 'API-Football returned nothing for this book/league' : 'enter an API-Football key to load this book')
+                        : 'not offered by API for this league, or book requires a paid plan';
+                    return `<tr><td>${name}</td><td class="coverage-none" colspan="5">no data returned (${why})</td></tr>`;
                 }
                 return `<tr>
                     <td>${name}</td>
@@ -1717,18 +2154,35 @@
                     <td>${h2h}</td>
                     <td>${fmtPoints(totalsPoints) || '—'}</td>
                     <td>${fmtPoints(spreadPoints) || '—'}</td>
+                    <td>${btts || '—'}</td>
                 </tr>`;
             }).join('');
+
+            let afNote = '';
+            const af = apiFootballStatus;
+            if (af) {
+                if (af.error) {
+                    afNote = `<div class="coverage-note"><span class="warn">API-Football: ${af.error}</span></div>`;
+                } else {
+                    const un = af.unmatched.length
+                        ? ` · <span class="warn">unmatched: ${af.unmatched.join('; ')}</span>`
+                        : '';
+                    afNote = `<div class="coverage-note">API-Football: ${af.requests} request${af.requests === 1 ? '' : 's'} (1 fixtures + 1 per kickoff date per book) · ${af.fixtures} fixtures in the next ${APIFOOTBALL_MAX_DAYS} days · ${af.matched} matched to Odds API matches · ${af.priced} priced${un}</div>`;
+                }
+            } else if (selectedBookmakers.some(isApiFootballBook)) {
+                afNote = `<div class="coverage-note">${apiFootballReason()}</div>`;
+            }
 
             return `
                 <details class="coverage">
                     <summary>🔎 Book coverage for this load (which markets each book returned)</summary>
                     <table class="coverage-table">
                         <thead>
-                            <tr><th>Book</th><th>Matches</th><th>h2h</th><th>O/U points returned (×matches)</th><th>AH points (×sides)</th></tr>
+                            <tr><th>Book</th><th>Matches</th><th>h2h</th><th>O/U points returned (×matches)</th><th>AH points (×sides)</th><th>BTTS</th></tr>
                         </thead>
                         <tbody>${rows}</tbody>
                     </table>
+                    ${afNote}
                 </details>
             `;
         }
@@ -1779,7 +2233,7 @@
                     <button class="btn btn-btts" id="bttsBtn" disabled>
                         <span>⚽</span> Fetch BTTS + alt O/U for 0 selected (Cost: 0)
                     </button>
-                    <span class="btts-info">⚡ pulls alternate O/U lines (FanDuel, BetMGM, Pinnacle) into the O/U columns for every match · ☑ + ⚽ fetches BTTS for selected matches</span>
+                    <span class="btts-info">⚡ pulls alternate O/U lines (Pinnacle fair prices; FanDuel/BetMGM where they post them) into the O/U columns · ☑ + ⚽ fetches Odds API BTTS for selected matches · Bet365 O/U + BTTS arrive with Load Odds when an API-Football key is set</span>
                 </div>
                 <div class="table-scroll">
                     <table>
@@ -1854,12 +2308,12 @@
                     rowHtml += `<td class="odds-cell">${renderOddsCell(awayAH, awayAHFair)}</td>`;
                 });
 
-                const hasBtts = bttsData[event.id];
-                if (hasBtts) {
-                    const yesOdds = findBestBttsOdds(bttsData[event.id], 'Yes');
-                    const noOdds = findBestBttsOdds(bttsData[event.id], 'No');
-                    const yesFair = getPinnacleBttsFairOdds(bttsData[event.id], 'Yes');
-                    const noFair = getPinnacleBttsFairOdds(bttsData[event.id], 'No');
+                const bttsBooks = bttsBookmakers(event.id);
+                if (bttsBooks.length) {
+                    const yesOdds = findBestBttsOdds(bttsBooks, 'Yes');
+                    const noOdds = findBestBttsOdds(bttsBooks, 'No');
+                    const yesFair = getPinnacleBttsFairOdds(bttsBooks, 'Yes');
+                    const noFair = getPinnacleBttsFairOdds(bttsBooks, 'No');
                     rowHtml += `<td class="odds-cell" id="btts-yes-${event.id}">${renderOddsCellHtml(yesOdds, yesFair)}</td>`;
                     rowHtml += `<td class="odds-cell" id="btts-no-${event.id}">${renderOddsCellHtml(noOdds, noFair)}</td>`;
                 } else {

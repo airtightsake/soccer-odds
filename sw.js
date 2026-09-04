@@ -1,4 +1,4 @@
-const CACHE_NAME = 'soccer-odds-v5';
+const CACHE_NAME = 'soccer-odds-v6';
 const urlsToCache = [
   './',
   './index.html',
@@ -26,6 +26,7 @@ self.addEventListener('fetch', event => {
   if (
     url.hostname.includes('api.allorigins.win') ||
     url.hostname.includes('api.the-odds-api.com') ||
+    url.hostname.includes('api-sports.io') ||
     url.hostname.includes('cors') ||
     event.request.method !== 'GET'
   ) {
