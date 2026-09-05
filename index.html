@@ -2354,7 +2354,23 @@
             updateFillOuButton();
         }
 
+        // Keys can be handed to the page once via the URL fragment
+        // (#oddskey=...&afkey=...), e.g. from a local launcher script that
+        // reads them from a .env file. A fragment is never sent to the
+        // server, so GitHub Pages never sees it; it is stored in this
+        // browser's localStorage and stripped from the address bar.
+        function applyKeysFromHash() {
+            if (!location.hash || location.hash.length < 2) return;
+            const params = new URLSearchParams(location.hash.slice(1));
+            const odds = (params.get('oddskey') || '').trim();
+            const af = (params.get('afkey') || '').trim();
+            if (odds.length > 10) localStorage.setItem('soccer_odds_api_key', odds);
+            if (af.length > 10) localStorage.setItem(APIFOOTBALL_KEY_STORAGE, af);
+            if (odds || af) history.replaceState(null, '', location.pathname + location.search);
+        }
+
         // Initialize on load
+        applyKeysFromHash();
         initSettings();
         loadSavedApiKey();
 

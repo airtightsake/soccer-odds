@@ -9,6 +9,8 @@ Live at: https://airtightsake.github.io/soccer-odds/
 1. **Open the app** (link above, or open `index.html` locally)
 2. **Enter your API key**: from https://the-odds-api.com (paid plans unlock Caesars and Fanatics)
 3. **Optional — enter an API-Football key** (https://www.api-football.com): adds Bet365 1X2, the O/U ladder and BTTS to every load, merged into the same table
+   - Keys are stored only in your browser (localStorage); nothing is sent anywhere but the two APIs, and nothing is committed to this repo
+   - To avoid typing them, open the page once with the keys in the URL fragment: `https://airtightsake.github.io/soccer-odds/#oddskey=...&afkey=...` — the fragment is never sent to the server, is saved to localStorage, and is stripped from the address bar (a local launcher script can build that URL from a `.env` file)
 4. **Select a league**: 60+ soccer leagues worldwide
 5. **Click "Load Odds"**: best available price per outcome, with the source book and its edge vs fair value
 
